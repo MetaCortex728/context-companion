@@ -57,6 +57,8 @@ INVALID 01M6H1SAXM46JXKMSM1R4EM449
 
 `ccomp validate` exits with 0 when everything is valid and 1 otherwise; it never prints payload content or window titles. `ccomp ack` refuses invalid packets and never replaces an existing acknowledgement. An acknowledgement means the packet was taken, not that it was read or answered.
 
+Before delivery, packets wait in a bounded outbox that suppresses consecutive duplicates, tracks each delivery as queued, delivering, delivered, consumed, uncertain or failed, and records every state change, with hashes but no content, in an append-only audit log. See [docs/outbox-and-receipts.md](docs/outbox-and-receipts.md).
+
 ## Origin
 
 Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking.
