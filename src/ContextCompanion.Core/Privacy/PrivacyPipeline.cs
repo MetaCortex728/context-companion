@@ -13,6 +13,8 @@ public enum CaptureStatus
     Duplicate,
     /// <summary>The captured window matched a denylist rule; nothing was kept.</summary>
     Blocked,
+    /// <summary>Nothing was left to deliver after text that could not be scanned in time was withheld.</summary>
+    Withheld,
 }
 
 /// <summary>Result of <see cref="PrivacyPipeline.Process"/>. Contains rule and pattern names, never captured content.</summary>
@@ -43,6 +45,7 @@ public sealed class PrivacyPipeline
 
     private readonly Outbox outbox;
     private readonly Denylist denylist;
+    private readonly SecretRedactor? redactor;
     private readonly IImageEncoder encoder;
     private readonly TimeProvider? time;
     private readonly UlidGenerator? ids;
@@ -56,6 +59,7 @@ public sealed class PrivacyPipeline
         if (!PacketNames.IsValidAgentName(destination)) throw new ArgumentException("Invalid destination name.", nameof(destination));
         Settings = settings;
         denylist = Denylist.Compile(settings.Denylist);
+        redactor = settings.Redaction.Secrets ? SecretRedactor.FromSettings(settings.Redaction) : null;
         this.outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
         Destination = destination;
         this.encoder = encoder ?? new PngEncoder();
@@ -96,8 +100,15 @@ public sealed class PrivacyPipeline
         var source = FilterMetadata(request.Source, Settings.Metadata);
 
         // 3. Text redaction.
-        string? text = request.Text;
-        string? note = request.Note;
+        string? text = RedactSecrets(request.Text, TextFileName, redactions);
+        string? note = RedactSecrets(request.Note, NoteFileName, redactions);
+        if (image is null && text is null && note is null)
+            return new CaptureResult
+            {
+                Status = CaptureStatus.Withheld,
+                Redactions = redactions,
+                Message = "Nothing was queued: the text was withheld because the secret scan did not finish in time.",
+            };
 
         // 4. Packet.
         var builder = new PacketBuilder(ids, time);
@@ -119,6 +130,37 @@ public sealed class PrivacyPipeline
                 ? $"Packet {draft.Id} queued for {Destination}."
                 : $"Same content as packet {queued.Record.Id}; not queued again.",
         };
+    }
+
+    /// <summary>
+    /// Replaces secret-shaped text and records one redaction per pattern. If a pattern times out the text cannot be
+    /// shown to be clean, so it is withheld entirely (fail closed) and that is recorded instead.
+    /// </summary>
+    private string? RedactSecrets(string? text, string item, List<PacketRedaction> redactions)
+    {
+        if (text is null || redactor is null) return text;
+        SecretRedactionResult result;
+        try { result = redactor.Redact(text); }
+        catch (SecretScanTimeoutException ex)
+        {
+            redactions.Add(new PacketRedaction
+            {
+                Kind = "withheld",
+                Reason = $"The {(item == NoteFileName ? "note" : "text")} was left out because the secret scan did not finish in time",
+                Pattern = ex.Pattern,
+            });
+            return null;
+        }
+        foreach (var count in result.Counts)
+            redactions.Add(new PacketRedaction
+            {
+                Kind = "secret",
+                Reason = "Secret-like text replaced with [REDACTED:" + count.Pattern + "]",
+                Item = item,
+                Pattern = count.Pattern,
+                Count = count.Count,
+            });
+        return result.Text;
     }
 
     /// <summary>Fills every denylisted window inside the region with black. Returns one redaction record per rule.</summary>

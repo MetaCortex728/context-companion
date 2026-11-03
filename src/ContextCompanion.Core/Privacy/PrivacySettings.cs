@@ -29,6 +29,9 @@ public sealed record PrivacySettings
     /// </summary>
     public List<DenylistRule> Denylist { get; set; } = DefaultDenylist();
 
+    /// <summary>Secret redaction for captured text and notes.</summary>
+    public RedactionSettings Redaction { get; set; } = new();
+
     /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
     public static List<DenylistRule> DefaultDenylist()
     {
@@ -81,6 +84,8 @@ public sealed record PrivacySettings
         if (SchemaVersion != CurrentSchemaVersion) problems.Add($"schema_version must be {CurrentSchemaVersion}");
         if (Metadata is null) problems.Add("metadata must be an object");
         problems.AddRange(Privacy.Denylist.Validate(Denylist));
+        if (Redaction is null) problems.Add("redaction must be an object");
+        else problems.AddRange(Redaction.Validate());
         return problems;
     }
 
@@ -111,6 +116,39 @@ public sealed record MetadataSettings
     public bool Region { get; set; } = true;
     /// <summary>Display scale factor. Default on.</summary>
     public bool Scale { get; set; } = true;
+}
+
+/// <summary>
+/// Secret redaction. The built-in patterns (a versioned JSON list shipped with Core, documented in PRIVACY.md) run on
+/// every captured text and note unless switched off; <see cref="ExtraPatterns"/> adds patterns of the same shape.
+/// </summary>
+public sealed record RedactionSettings
+{
+    /// <summary>Redact secret-shaped text. Default on.</summary>
+    public bool Secrets { get; set; } = true;
+    /// <summary>Names of built-in patterns to skip. Default none.</summary>
+    public List<string> DisabledPatterns { get; set; } = [];
+    /// <summary>Additional patterns, run after the built-in ones. Default none.</summary>
+    public List<SecretPattern> ExtraPatterns { get; set; } = [];
+
+    public IReadOnlyList<string> Validate()
+    {
+        var problems = new List<string>();
+        if (DisabledPatterns is null || ExtraPatterns is null)
+        {
+            problems.Add("redaction.disabled_patterns and redaction.extra_patterns must be arrays");
+            return problems;
+        }
+        var builtIn = SecretPatternFile.BuiltIn().Patterns.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (string? name in DisabledPatterns)
+            if (name is null || !builtIn.Contains(name))
+                problems.Add($"redaction.disabled_patterns names an unknown pattern{(PacketNames.IsValidToken(name) ? $" '{name}'" : "")}");
+        problems.AddRange(SecretRedactor.Validate(ExtraPatterns, "redaction.extra_patterns"));
+        foreach (var pattern in ExtraPatterns)
+            if (pattern is not null && builtIn.Contains(pattern.Name) && !DisabledPatterns.Contains(pattern.Name))
+                problems.Add($"redaction.extra_patterns: '{pattern.Name}' is a built-in pattern name; disable the built-in one to replace it");
+        return problems;
+    }
 }
 
 /// <summary>Invalid privacy settings. Messages name settings and rules, never captured content.</summary>

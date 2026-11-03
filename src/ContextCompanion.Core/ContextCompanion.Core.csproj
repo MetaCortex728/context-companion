@@ -9,6 +9,7 @@
   <!-- Default privacy data, documented in PRIVACY.md and editable through the settings file. -->
   <ItemGroup>
     <EmbeddedResource Include="Privacy\Defaults\denylist.json" LogicalName="ContextCompanion.Core.Privacy.denylist.json" />
+    <EmbeddedResource Include="Privacy\Defaults\secret-patterns.json" LogicalName="ContextCompanion.Core.Privacy.secret-patterns.json" />
   </ItemGroup>
 
   <ItemGroup>
