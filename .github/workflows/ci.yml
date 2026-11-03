@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  build:
+    name: build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux cross-builds the WPF app with Windows targeting enabled.
+          - os: ubuntu-latest
+            build_args: -p:EnableWindowsTargeting=true
+          # Windows builds everything natively.
+          - os: windows-latest
+            build_args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ContextCompanion.sln ${{ matrix.build_args }}
+
+      - name: Build
+        run: dotnet build ContextCompanion.sln --configuration Release --no-restore ${{ matrix.build_args }}
+
+      - name: Test (Core)
+        run: dotnet test tests/ContextCompanion.Core.Tests/ContextCompanion.Core.Tests.csproj --configuration Release --no-build --verbosity normal

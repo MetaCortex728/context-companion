@@ -1,0 +1,34 @@
+context-companion
+Copyright 2026 context-companion contributors.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components
+======================
+
+The shipped programs (ContextCompanion.Core, ContextCompanion.App and the
+`ccomp` tool) use only the .NET 10 runtime and the Windows Desktop runtime
+(WPF, and Windows Forms for the tray icon), both MIT licensed by the .NET
+Foundation and Microsoft. They take no other package dependencies.
+
+The test project (tests/ContextCompanion.Core.Tests) uses the following
+packages at build and test time only; none of them is shipped:
+
+Test framework: xUnit.net v2
+  xunit 2.9.3, xunit.core, xunit.assert, xunit.abstractions 2.0.3,
+  xunit.extensibility.core, xunit.extensibility.execution,
+  xunit.analyzers 1.18.0, xunit.runner.visualstudio 3.1.4
+  Copyright (c) .NET Foundation and Contributors
+  Licence: Apache License 2.0
+  https://github.com/xunit/xunit
+
+Test host: Microsoft.NET.Test.Sdk 17.14.1 and its dependencies
+  Microsoft.TestPlatform.TestHost, Microsoft.TestPlatform.ObjectModel,
+  Microsoft.CodeCoverage 17.14.1
+  Copyright (c) Microsoft Corporation
+  Licence: MIT
+  https://github.com/microsoft/vstest
+
+  Newtonsoft.Json 13.0.3 (pulled in by the test host)
+  Copyright (c) 2007 James Newton-King
+  Licence: MIT
+  https://github.com/JamesNK/Newtonsoft.Json
