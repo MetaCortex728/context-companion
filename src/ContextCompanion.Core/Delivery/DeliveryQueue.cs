@@ -87,6 +87,12 @@ public sealed class DeliveryQueue : IDisposable
                 lock (retryAfter) retryAfter.Remove(destination.Name);
             outbox.CompleteDelivery(record.Id, outcome);
             attempts++;
+            if (outcome == DeliveryOutcome.Delivered && destination is IRetainingDestination retaining)
+            {
+                // Retention never affects the delivery that triggered it.
+                try { retaining.ApplyRetention(id => outbox.Find(id)?.State); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed?.Invoke(ex); }
+            }
         }
         return attempts;
     }

@@ -18,23 +18,44 @@ public interface IDestination
     PacketAcknowledgement? ReadAcknowledgement(string packetId);
 }
 
+/// <summary>A destination that keeps packets and applies retention limits after each delivery.</summary>
+public interface IRetainingDestination : IDestination
+{
+    /// <summary>
+    /// Applies the retention limits. <paramref name="stateOf"/> gives a packet's state in the outbox (null if unknown);
+    /// packets that are queued or being delivered are never removed. Returns the removals made.
+    /// </summary>
+    IReadOnlyList<PacketRemoval> ApplyRetention(Func<string, DeliveryState?> stateOf);
+}
+
 /// <summary>
 /// Delivers packets into a local inbox folder with the atomic <see cref="InboxWriter"/>. A packet is
 /// reported delivered only once it is visible in the inbox and validates.
 /// </summary>
-public sealed class InboxDestination : IDestination
+public sealed class InboxDestination : IRetainingDestination
 {
     private readonly InboxWriter writer;
+    private readonly RetentionLimits retention;
+    private readonly AuditLog audit;
+    private readonly TimeProvider time;
 
     /// <summary>
     /// Opens the inbox and removes packets left half-staged by an earlier crash. context-companion
     /// must be the only program writing packets into this inbox.
     /// </summary>
-    public InboxDestination(string inboxRoot, string name = "inbox")
+    /// <param name="inboxRoot">The inbox folder.</param>
+    /// <param name="name">Destination name.</param>
+    /// <param name="retention">Limits applied after each delivery; none by default.</param>
+    /// <param name="audit">Where removals are recorded; by default the inbox's own <c>.audit.jsonl</c>.</param>
+    /// <param name="time">Clock for retention by age.</param>
+    public InboxDestination(string inboxRoot, string name = "inbox", RetentionLimits? retention = null, AuditLog? audit = null, TimeProvider? time = null)
     {
         if (!PacketNames.IsValidAgentName(name)) throw new ArgumentException("Invalid destination name.", nameof(name));
         Name = name;
         writer = new InboxWriter(inboxRoot);
+        this.retention = retention ?? RetentionLimits.None;
+        this.time = time ?? TimeProvider.System;
+        this.audit = audit ?? new AuditLog(InboxRetention.DefaultAuditPath(writer.Root), this.time);
         Directory.CreateDirectory(writer.Root);
         writer.RemoveStaleStaging();
     }
@@ -82,6 +103,11 @@ public sealed class InboxDestination : IDestination
             return Task.FromResult(DeliveryOutcome.NotDelivered);
         }
     }
+
+    public RetentionLimits Retention => retention;
+
+    public IReadOnlyList<PacketRemoval> ApplyRetention(Func<string, DeliveryState?> stateOf) =>
+        retention == RetentionLimits.None ? [] : InboxRetention.Apply(writer.Root, retention, audit, time.GetUtcNow(), stateOf, Name);
 
     public PacketAcknowledgement? ReadAcknowledgement(string packetId)
     {

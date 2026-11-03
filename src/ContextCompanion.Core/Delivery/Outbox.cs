@@ -54,7 +54,7 @@ public sealed class Outbox
         Audit = audit ?? new AuditLog(Path.Combine(Root, AuditFileName), this.time);
         Directory.CreateDirectory(Root);
         store = new InboxWriter(Path.Combine(Root, PacketsDirectoryName));
-        records = Load();
+        records = Load(StatePath);
         Recover();
     }
 
@@ -259,16 +259,19 @@ public sealed class Outbox
         }
     }
 
-    private List<OutboxRecord> Load()
+    /// <summary>Reads the records of an outbox folder without opening it (no recovery, no changes). Empty if there is no state yet.</summary>
+    public static IReadOnlyList<OutboxRecord> ReadRecords(string root) => Load(Path.Combine(Path.GetFullPath(root), StateFileName));
+
+    private static List<OutboxRecord> Load(string statePath)
     {
-        var file = new FileInfo(StatePath);
+        var file = new FileInfo(statePath);
         if (!file.Exists) return [];
         const string invalid = "The outbox state is invalid; stored packets were left untouched.";
         if (file.Length > MaxStateBytes) throw new IOException(invalid + " It exceeds its size limit.");
         OutboxStateFile? state;
         try
         {
-            state = JsonSerializer.Deserialize<OutboxStateFile>(File.ReadAllBytes(StatePath), PacketJson.Options);
+            state = JsonSerializer.Deserialize<OutboxStateFile>(File.ReadAllBytes(statePath), PacketJson.Options);
         }
         catch (JsonException ex) { throw new IOException(invalid, ex); }
         if (state is null || state.SchemaVersion != StateFileVersion || state.Records is null || state.Records.Any(r => r is null) ||

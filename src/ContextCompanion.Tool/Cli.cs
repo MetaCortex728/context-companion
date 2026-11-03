@@ -1,6 +1,14 @@
+using ContextCompanion.Core.Delivery;
 using ContextCompanion.Core.Packets;
+using ContextCompanion.Core.Privacy;
 
 namespace ContextCompanion.Tool;
+
+/// <summary>What <c>ccomp</c> uses from its surroundings; tests replace it.</summary>
+public sealed class CliEnvironment
+{
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+}
 
 /// <summary>
 /// The <c>ccomp</c> command line. Output names packets, files and problems only; it never prints
@@ -18,11 +26,20 @@ public static class Cli
           ccomp ack <packet> --consumer <name> [--note <text>]
               Write ack.json into a valid packet to record that <name> consumed it.
               An acknowledgement means taken, not read or answered.
+          ccomp purge <inbox> [--all | --older-than <duration> | --id <id>] [--yes]
+                [--outbox <dir>] [--audit <log>] [--settings <privacy.json>]
+              Remove packets from an inbox. Without a selector, apply the retention limits
+              (from --settings, or the defaults). Durations look like 90m, 12h, 7d or 2w.
+              A dry run unless --yes is given. Packets that the outbox (--outbox) still has
+              as queued or delivering are never removed. Each removal is written to the audit
+              log (default <inbox>/.audit.jsonl) as the packet id and a reason.
+              Deleting files does not guarantee the bytes are unrecoverable.
           ccomp --help
         """;
 
-    public static int Run(string[] args, TextWriter output, TextWriter error)
+    public static int Run(string[] args, TextWriter output, TextWriter error, CliEnvironment? environment = null)
     {
+        environment ??= new CliEnvironment();
         if (args.Length == 0) { error.WriteLine(Help); return Usage; }
         try
         {
@@ -31,6 +48,7 @@ public static class Cli
                 "-h" or "--help" or "help" => PrintHelp(output),
                 "validate" => Validate(args[1..], output, error),
                 "ack" => Ack(args[1..], output, error),
+                "purge" => Purge(args[1..], output, error, environment),
                 _ => UsageError(error, $"unknown command '{args[0]}'"),
             };
         }
@@ -127,4 +145,74 @@ public static class Cli
             return Failed;
         }
     }
+
+    private static int Purge(string[] args, TextWriter output, TextWriter error, CliEnvironment environment)
+    {
+        string? inbox = null, outbox = null, auditPath = null, settingsPath = null, id = null;
+        TimeSpan? olderThan = null;
+        bool all = false, yes = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--all": all = true; break;
+                case "--yes": yes = true; break;
+                case "--older-than" when i + 1 < args.Length:
+                    if (!Duration.TryParse(args[++i], out var age)) return UsageError(error, "--older-than takes a duration such as 12h, 7d or 2w");
+                    olderThan = age;
+                    break;
+                case "--id" when i + 1 < args.Length:
+                    id = args[++i];
+                    if (!Ulid.IsValid(id)) return UsageError(error, "--id takes a packet id (a canonical ULID)");
+                    break;
+                case "--outbox" when i + 1 < args.Length: outbox = args[++i]; break;
+                case "--audit" when i + 1 < args.Length: auditPath = args[++i]; break;
+                case "--settings" when i + 1 < args.Length: settingsPath = args[++i]; break;
+                case var a when a.StartsWith('-'): return UsageError(error, $"unknown or incomplete option '{a}'");
+                case var a when inbox is null: inbox = a; break;
+                default: return UsageError(error, "purge takes one inbox folder");
+            }
+        }
+        if (inbox is null) return UsageError(error, "purge needs an inbox folder");
+        int selectors = (all ? 1 : 0) + (olderThan is null ? 0 : 1) + (id is null ? 0 : 1);
+        if (selectors > 1) return UsageError(error, "use only one of --all, --older-than and --id");
+        if (settingsPath is not null && selectors > 0) return UsageError(error, "--settings applies only without --all, --older-than or --id");
+        string root = Path.GetFullPath(inbox);
+        if (!Directory.Exists(root)) { error.WriteLine($"ccomp: '{inbox}' is not a folder."); return Failed; }
+
+        RetentionLimits limits;
+        try { limits = (settingsPath is null ? PrivacySettings.Default : PrivacySettings.LoadOrDefault(settingsPath)).Retention.ToLimits(); }
+        catch (PrivacySettingsException ex) { error.WriteLine($"ccomp: {ex.Message}"); return Failed; }
+
+        Func<string, DeliveryState?>? stateOf = null;
+        if (outbox is not null)
+        {
+            if (!Directory.Exists(outbox)) { error.WriteLine($"ccomp: '{outbox}' is not a folder."); return Failed; }
+            var states = Outbox.ReadRecords(outbox).ToDictionary(r => r.Id, r => r.State, StringComparer.Ordinal);
+            stateOf = packet => states.TryGetValue(packet, out var state) ? state : null;
+        }
+
+        var kind = all ? PurgeKind.All : olderThan is not null ? PurgeKind.OlderThan : id is not null ? PurgeKind.Id : PurgeKind.Retention;
+        IReadOnlyList<PacketRemoval> plan;
+        try { plan = InboxRetention.PlanPurge(root, kind, environment.Time.GetUtcNow(), olderThan, id, limits, stateOf); }
+        catch (InvalidOperationException ex) { error.WriteLine($"ccomp: {ex.Message}"); return Failed; }
+
+        if (plan.Count == 0) { output.WriteLine("Nothing to remove."); return Ok; }
+        if (!yes)
+        {
+            foreach (var removal in plan) output.WriteLine($"Would remove {removal.Id}: {removal.Reason}, {removal.Bytes} bytes");
+            output.WriteLine($"{Plural(plan.Count, "packet")}, {plan.Sum(r => r.Bytes)} bytes would be removed. Run again with --yes to delete.");
+            return Ok;
+        }
+
+        var audit = new AuditLog(auditPath ?? InboxRetention.DefaultAuditPath(root), environment.Time);
+        var done = InboxRetention.Remove(root, plan, audit);
+        foreach (var removal in done) output.WriteLine($"Removed {removal.Id}: {removal.Reason}, {removal.Bytes} bytes");
+        foreach (var skipped in plan.Except(done)) error.WriteLine($"ccomp: could not remove {skipped.Id}; it may be open in another program.");
+        output.WriteLine($"{Plural(done.Count, "packet")} removed, {done.Sum(r => r.Bytes)} bytes. " +
+            "Deleted files may still be recoverable from the disk or from backups; see PRIVACY.md.");
+        return done.Count == plan.Count ? Ok : Failed;
+    }
+
+    private static string Plural(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
 }

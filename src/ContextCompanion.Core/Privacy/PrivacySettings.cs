@@ -32,6 +32,9 @@ public sealed record PrivacySettings
     /// <summary>Secret redaction for captured text and notes.</summary>
     public RedactionSettings Redaction { get; set; } = new();
 
+    /// <summary>What each inbox keeps; applied after every delivery and by <c>ccomp purge</c>.</summary>
+    public RetentionSettings Retention { get; set; } = new();
+
     /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
     public static List<DenylistRule> DefaultDenylist()
     {
@@ -84,6 +87,8 @@ public sealed record PrivacySettings
         if (SchemaVersion != CurrentSchemaVersion) problems.Add($"schema_version must be {CurrentSchemaVersion}");
         if (Metadata is null) problems.Add("metadata must be an object");
         problems.AddRange(Privacy.Denylist.Validate(Denylist));
+        if (Retention is null) problems.Add("retention must be an object");
+        else problems.AddRange(Retention.Validate());
         if (Redaction is null) problems.Add("redaction must be an object");
         else problems.AddRange(Redaction.Validate());
         return problems;
@@ -149,6 +154,34 @@ public sealed record RedactionSettings
                 problems.Add($"redaction.extra_patterns: '{pattern.Name}' is a built-in pattern name; disable the built-in one to replace it");
         return problems;
     }
+}
+
+/// <summary>
+/// Per-inbox retention limits. Null switches a limit off. Packets still queued or being delivered are never removed;
+/// consumed packets go first, then the oldest.
+/// </summary>
+public sealed record RetentionSettings
+{
+    /// <summary>Most packets an inbox keeps. Default 200.</summary>
+    public int? MaxPackets { get; set; } = 200;
+    /// <summary>Most bytes an inbox keeps. Default 536870912 (512 MiB).</summary>
+    public long? MaxBytes { get; set; } = 512L * 1024 * 1024;
+    /// <summary>Oldest packet an inbox keeps, as a duration such as <c>7d</c>. Default <c>7d</c>.</summary>
+    public string? MaxAge { get; set; } = "7d";
+
+    public IReadOnlyList<string> Validate()
+    {
+        var problems = new List<string>();
+        if (MaxPackets is < 1) problems.Add("retention.max_packets must be at least 1, or null for no limit");
+        if (MaxBytes is < 1) problems.Add("retention.max_bytes must be at least 1, or null for no limit");
+        if (MaxAge is not null && !Duration.TryParse(MaxAge, out _))
+            problems.Add("retention.max_age must be a duration such as 12h, 7d or 2w, or null for no limit");
+        return problems;
+    }
+
+    /// <summary>The limits in the form <see cref="Delivery.InboxRetention"/> takes.</summary>
+    public Delivery.RetentionLimits ToLimits() =>
+        new(MaxPackets, MaxBytes, MaxAge is null ? null : Duration.Parse(MaxAge));
 }
 
 /// <summary>Invalid privacy settings. Messages name settings and rules, never captured content.</summary>
