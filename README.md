@@ -31,6 +31,32 @@ dotnet test tests/ContextCompanion.Core.Tests
 
 Continuous integration (`.github/workflows/ci.yml`) does both: `ubuntu-latest` builds everything with Windows targeting enabled and runs the Core tests, and `windows-latest` does the same natively. .NET CLI telemetry is switched off in CI.
 
+## Packets and `ccomp`
+
+Each capture becomes a **packet**: a folder `inbox/<id>/` with a `manifest.json` (ULID id, creation time, items with sizes and SHA-256 hashes, optional source details, a record of redactions) and the captured files. Packets appear in the inbox atomically, and a consumer may acknowledge one by adding `ack.json`. The format is specified in [docs/packet-format.md](docs/packet-format.md), with JSON Schemas in [`schema/`](schema/).
+
+The `ccomp` tool checks packets and writes acknowledgements. Build it with `dotnet build src/ContextCompanion.Tool` (or `dotnet publish src/ContextCompanion.Tool -o <dir>`) and run `ccomp` from the output, or `dotnet ccomp.dll` on any platform. The transcript below is from a packet written with `PacketBuilder` and `InboxWriter`, the same calls the tests use; `CliTests` runs these commands against packets created in tests.
+
+```
+$ ccomp validate inbox
+OK      01M6H1SAXM46JXKMSM1R4EM449: 2 items, 30 bytes
+1 packet checked, 0 invalid.
+
+$ ccomp ack inbox/01M6H1SAXM46JXKMSM1R4EM449 --consumer example-agent
+Acknowledged 01M6H1SAXM46JXKMSM1R4EM449 as example-agent at 2026-11-03T15:52:30.640Z.
+
+$ ccomp validate inbox/01M6H1SAXM46JXKMSM1R4EM449
+OK      01M6H1SAXM46JXKMSM1R4EM449: 2 items, 30 bytes, acknowledged by example-agent
+
+$ printf 'x' >> inbox/01M6H1SAXM46JXKMSM1R4EM449/selection.txt
+$ ccomp validate inbox
+INVALID 01M6H1SAXM46JXKMSM1R4EM449
+  - Size: 'selection.txt' has 19 bytes, manifest says 18
+1 packet checked, 1 invalid.
+```
+
+`ccomp validate` exits with 0 when everything is valid and 1 otherwise; it never prints payload content or window titles. `ccomp ack` refuses invalid packets and never replaces an existing acknowledgement. An acknowledgement means the packet was taken, not that it was read or answered.
+
 ## Origin
 
 Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking.
