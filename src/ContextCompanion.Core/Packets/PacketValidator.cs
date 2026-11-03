@@ -57,7 +57,7 @@ public static class PacketValidator
     internal static readonly HashSet<string> ManifestKeys = ["format", "schema_version", "id", "created", "items", "source", "redactions"];
     internal static readonly HashSet<string> ManifestRequired = ["format", "schema_version", "id", "created", "items", "redactions"];
     internal static readonly HashSet<string> ItemKeys = ["kind", "file", "media_type", "bytes", "sha256"];
-    internal static readonly HashSet<string> SourceKeys = ["process_name", "window_title", "capture_mode", "region", "scale"];
+    internal static readonly HashSet<string> SourceKeys = ["process_name", "window_class", "window_title", "executable_path", "capture_mode", "region", "scale"];
     internal static readonly HashSet<string> RegionKeys = ["x", "y", "width", "height"];
     internal static readonly HashSet<string> RedactionKeys = ["kind", "reason", "item", "count"];
     internal static readonly HashSet<string> RedactionRequired = ["kind", "reason"];
@@ -283,6 +283,12 @@ public static class PacketValidator
         if (source.TryGetProperty("process_name", out var process) &&
             !IsBoundedText(process, 1, PacketFormat.MaxProcessNameLength, allowLineBreaks: false))
             schema($"source.process_name must be 1 to {PacketFormat.MaxProcessNameLength} characters without control characters");
+        if (source.TryGetProperty("window_class", out var windowClass) &&
+            !IsBoundedText(windowClass, 1, PacketFormat.MaxWindowClassLength, allowLineBreaks: false))
+            schema($"source.window_class must be 1 to {PacketFormat.MaxWindowClassLength} characters without control characters");
+        if (source.TryGetProperty("executable_path", out var executable) &&
+            !IsBoundedText(executable, 1, PacketFormat.MaxExecutablePathLength, allowLineBreaks: false))
+            schema($"source.executable_path must be 1 to {PacketFormat.MaxExecutablePathLength} characters without control characters");
         if (source.TryGetProperty("window_title", out var title) &&
             !IsBoundedText(title, 0, PacketFormat.MaxWindowTitleLength, allowLineBreaks: false))
             schema($"source.window_title must be at most {PacketFormat.MaxWindowTitleLength} characters without control characters");

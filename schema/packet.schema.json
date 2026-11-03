@@ -82,12 +82,14 @@
       ]
     },
     "source": {
-      "description": "Where the content came from. Every field is optional; each can be switched off.",
+      "description": "Where the content came from. Every field is optional; each can be switched off in the privacy settings, and a field that is off is never written.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "process_name": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 260 },
+        "window_class": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 256 },
         "window_title": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "maxLength": 1024 },
+        "executable_path": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 32767 },
         "capture_mode": { "$ref": "#/$defs/token" },
         "region": {
           "description": "Captured rectangle in physical screen pixels.",

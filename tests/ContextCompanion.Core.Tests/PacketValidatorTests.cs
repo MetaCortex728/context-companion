@@ -77,7 +77,7 @@ public class PacketValidatorTests : IDisposable
         "window-title-too-long", "capture-mode-uppercase", "region-zero-width", "region-missing-y", "region-huge",
         "scale-zero", "scale-too-large", "scale-string", "redactions-not-array", "redaction-missing-reason",
         "redaction-unknown-property", "redaction-item-unlisted", "redaction-count-zero", "redaction-kind-spaces",
-        "manifest-array",
+        "window-class-empty", "executable-path-control", "executable-path-too-long", "manifest-array",
     };
 
     [Theory]
@@ -131,6 +131,9 @@ public class PacketValidatorTests : IDisposable
                 case "process-name-empty": source["process_name"] = ""; break;
                 case "window-title-control": source["window_title"] = "line\nbreak"; break;
                 case "window-title-too-long": source["window_title"] = new string('t', PacketFormat.MaxWindowTitleLength + 1); break;
+                case "window-class-empty": source["window_class"] = ""; break;
+                case "executable-path-control": source["executable_path"] = "C:\\a\u0001b.exe"; break;
+                case "executable-path-too-long": source["executable_path"] = new string('p', PacketFormat.MaxExecutablePathLength + 1); break;
                 case "capture-mode-uppercase": source["capture_mode"] = "Window"; break;
                 case "region-zero-width": region["width"] = 0; break;
                 case "region-missing-y": region.Remove("y"); break;

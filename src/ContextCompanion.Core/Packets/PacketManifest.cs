@@ -20,6 +20,8 @@ public static class PacketFormat
     public const int MaxFileNameLength = 100;
     public const int MaxProcessNameLength = 260;
     public const int MaxWindowTitleLength = 1024;
+    public const int MaxWindowClassLength = 256;
+    public const int MaxExecutablePathLength = 32767;
     public const int MaxRedactions = 256;
     public const int MaxRedactionReasonLength = 500;
     public const int MaxNoteLength = 1000;
@@ -68,7 +70,9 @@ public sealed record PacketItem
 public sealed record PacketSource
 {
     public string? ProcessName { get; init; }
+    public string? WindowClass { get; init; }
     public string? WindowTitle { get; init; }
+    public string? ExecutablePath { get; init; }
     public string? CaptureMode { get; init; }
     public PacketRegion? Region { get; init; }
     public double? Scale { get; init; }

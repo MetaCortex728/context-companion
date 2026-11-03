@@ -83,12 +83,14 @@ UTF-8 JSON, at most 1 MiB, no comments, no trailing commas, no duplicate propert
 
 ### Source
 
-Every field is optional and each can be switched off by the user, so readers must cope with any subset, including no `source` at all.
+Every field is optional and each can be switched off by the user, so readers must cope with any subset, including no `source` at all. By default context-companion writes only `process_name`, `capture_mode`, `region` and `scale`; see [PRIVACY.md](../PRIVACY.md).
 
 | Field | Meaning |
 | --- | --- |
 | `process_name` | Executable name of the captured application, for example `notepad.exe`. 1–260 characters. |
-| `window_title` | Title of the captured window. Up to 1024 characters. |
+| `window_class` | Window class name of the captured window. 1–256 characters. Off by default. |
+| `window_title` | Title of the captured window. Up to 1024 characters. Off by default. |
+| `executable_path` | Full path of the captured application's executable. 1–32767 characters. Off by default. |
 | `capture_mode` | How it was captured: a lower-case token such as `window`, `region` or `text`. |
 | `region` | The captured rectangle in physical screen pixels: integers `x`, `y` (may be negative on multi-monitor set-ups), `width`, `height` (at least 1). |
 | `scale` | Display scale factor at capture time, greater than 0 and at most 16 (1.5 = 150 %). |

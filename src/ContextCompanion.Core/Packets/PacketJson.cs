@@ -59,6 +59,7 @@ public static class PacketJson
 [JsonSerializable(typeof(PacketAcknowledgement))]
 [JsonSerializable(typeof(Delivery.OutboxStateFile))]
 [JsonSerializable(typeof(Delivery.AuditEntry))]
+[JsonSerializable(typeof(Privacy.PrivacySettings))]
 internal sealed partial class CoreJsonContext : JsonSerializerContext;
 
 /// <summary>Writes and reads <see cref="DateTimeOffset"/> as UTC ISO 8601 ending in <c>Z</c>.</summary>
