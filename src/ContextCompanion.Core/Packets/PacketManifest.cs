@@ -86,12 +86,16 @@ public sealed record PacketRegion(int X, int Y, int Width, int Height);
 /// </summary>
 public sealed record PacketRedaction
 {
-    /// <summary>Category, for example <c>secret</c> or <c>denylisted-window</c>.</summary>
+    /// <summary>Category, for example <c>secret</c> or <c>blackout</c>.</summary>
     public required string Kind { get; init; }
     /// <summary>Human-readable reason, written by the tool, without the removed content.</summary>
     public required string Reason { get; init; }
     /// <summary>The item the redaction applies to, if any.</summary>
     public string? Item { get; init; }
+    /// <summary>For <c>blackout</c>: the name of the denylist rule that matched.</summary>
+    public string? Rule { get; init; }
+    /// <summary>For <c>secret</c>: the name of the redaction pattern that matched.</summary>
+    public string? Pattern { get; init; }
     /// <summary>How many separate removals, if counted.</summary>
     public int? Count { get; init; }
 }

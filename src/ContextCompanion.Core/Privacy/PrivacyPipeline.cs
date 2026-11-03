@@ -42,6 +42,7 @@ public sealed class PrivacyPipeline
     public const string NoteFileName = "note.txt";
 
     private readonly Outbox outbox;
+    private readonly Denylist denylist;
     private readonly IImageEncoder encoder;
     private readonly TimeProvider? time;
     private readonly UlidGenerator? ids;
@@ -54,6 +55,7 @@ public sealed class PrivacyPipeline
         settings = PrivacySettings.Parse(settings.ToJson());
         if (!PacketNames.IsValidAgentName(destination)) throw new ArgumentException("Invalid destination name.", nameof(destination));
         Settings = settings;
+        denylist = Denylist.Compile(settings.Denylist);
         this.outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
         Destination = destination;
         this.encoder = encoder ?? new PngEncoder();
@@ -74,9 +76,21 @@ public sealed class PrivacyPipeline
         ArgumentNullException.ThrowIfNull(request);
         CheckShape(request);
 
-        // 1. Denylist.
-        var image = request.Image?.Clone();
+        // 1. Denylist. A matching captured window is refused before any pixels or text are kept.
+        var captured = request.Source;
+        if (denylist.Match(captured.ProcessName, captured.WindowClass, captured.WindowTitle) is { } rule)
+        {
+            outbox.Audit.RecordBlocked(rule);
+            return new CaptureResult
+            {
+                Status = CaptureStatus.Blocked,
+                Rule = rule,
+                Message = $"Capture refused: the window matches denylist rule '{rule}'. Nothing was kept.",
+            };
+        }
         var redactions = new List<PacketRedaction>();
+        var image = request.Image?.Clone();
+        if (image is not null) redactions.AddRange(BlackOutDenylistedWindows(image, captured.Region!.Value, request.VisibleWindows));
 
         // 2. Metadata filter: from here on only enabled fields exist.
         var source = FilterMetadata(request.Source, Settings.Metadata);
@@ -105,6 +119,26 @@ public sealed class PrivacyPipeline
                 ? $"Packet {draft.Id} queued for {Destination}."
                 : $"Same content as packet {queued.Record.Id}; not queued again.",
         };
+    }
+
+    /// <summary>Fills every denylisted window inside the region with black. Returns one redaction record per rule.</summary>
+    private IEnumerable<PacketRedaction> BlackOutDenylistedWindows(BgraImage image, ScreenRect region, IReadOnlyList<VisibleWindow> windows)
+    {
+        var counts = new OrderedDictionary<string, int>(StringComparer.Ordinal);
+        foreach (var window in windows)
+        {
+            if (denylist.Match(window.ProcessName, window.WindowClass, window.Title) is not { } rule) continue;
+            if (Blackout.Fill(image, region, window.Bounds))
+                counts[rule] = counts.GetValueOrDefault(rule) + 1;
+        }
+        return counts.Select(c => new PacketRedaction
+        {
+            Kind = "blackout",
+            Reason = "Window on the denylist filled with black",
+            Item = ImageFileName,
+            Rule = c.Key,
+            Count = c.Value,
+        });
     }
 
     private void CheckShape(CaptureRequest request)

@@ -6,24 +6,34 @@ using ContextCompanion.Core.Packets;
 namespace ContextCompanion.Core.Delivery;
 
 /// <summary>
-/// One line of the audit log. By construction it holds only identifiers, state names, sizes and
-/// hashes: never payload content, window titles, notes or any other text from a packet.
+/// One line of the audit log. By construction it holds only identifiers, state names, sizes, hashes and the names
+/// of rules and reasons chosen by the tool: never payload content, window titles, process names, paths, notes or any
+/// other text from a capture or a packet.
 /// </summary>
 public sealed record AuditEntry
 {
     [JsonConverter(typeof(UtcTimestampConverter))]
     public required DateTimeOffset Time { get; init; }
-    public required string Packet { get; init; }
-    public required string Destination { get; init; }
+    /// <summary>Packet id. Absent for a refused capture, which never became a packet.</summary>
+    public string? Packet { get; init; }
+    /// <summary>Destination name. Absent for a refused capture.</summary>
+    public string? Destination { get; init; }
     /// <summary>Previous state, or null when the packet entered the outbox.</summary>
     public string? From { get; init; }
-    /// <summary>New state, or <c>discarded</c> when the user removed the packet from the outbox.</summary>
+    /// <summary>
+    /// New state; or <c>discarded</c> (removed from the outbox by the user), <c>blocked</c> (capture refused by a
+    /// denylist rule) or <c>removed</c> (deleted from an inbox by retention or purge).
+    /// </summary>
     public required string To { get; init; }
-    public required string ContentSha256 { get; init; }
-    public required IReadOnlyList<string> ItemSha256 { get; init; }
-    public required long Bytes { get; init; }
+    public string? ContentSha256 { get; init; }
+    public IReadOnlyList<string>? ItemSha256 { get; init; }
+    public long? Bytes { get; init; }
     /// <summary>The consumer name from <c>ack.json</c>, for <c>consumed</c> only (a restricted identifier, not free text).</summary>
     public string? Consumer { get; init; }
+    /// <summary>For <c>blocked</c>: the denylist rule's name.</summary>
+    public string? Rule { get; init; }
+    /// <summary>For <c>removed</c>: a fixed reason token such as <c>retention-max-age</c> or <c>purge-all</c>.</summary>
+    public string? Reason { get; init; }
 }
 
 /// <summary>
@@ -33,6 +43,8 @@ public sealed record AuditEntry
 public sealed class AuditLog
 {
     public const string Discarded = "discarded";
+    public const string Blocked = "blocked";
+    public const string Removed = "removed";
     private readonly Lock gate = new();
     private readonly TimeProvider time;
 
@@ -48,7 +60,7 @@ public sealed class AuditLog
     {
         var entry = new AuditEntry
         {
-            Time = PacketJson.TruncateToMilliseconds(time.GetUtcNow()),
+            Time = Now(),
             Packet = record.Id,
             Destination = record.Destination,
             From = from is { } f ? DeliveryTransitions.Name(f) : null,
@@ -60,6 +72,24 @@ public sealed class AuditLog
         };
         Append(entry);
     }
+
+    /// <summary>Records a capture refused by a denylist rule: the time and the rule's name, nothing else.</summary>
+    public void RecordBlocked(string rule)
+    {
+        if (!PacketNames.IsValidAgentName(rule)) throw new ArgumentException("Invalid rule name.", nameof(rule));
+        Append(new AuditEntry { Time = Now(), To = Blocked, Rule = rule });
+    }
+
+    /// <summary>Records that a packet was deleted: its id, the destination it was in and a reason token.</summary>
+    public void RecordRemoval(string packet, string? destination, string reason)
+    {
+        if (!Ulid.IsValid(packet)) throw new ArgumentException("Invalid packet id.", nameof(packet));
+        if (destination is not null && !PacketNames.IsValidAgentName(destination)) throw new ArgumentException("Invalid destination name.", nameof(destination));
+        if (!PacketNames.IsValidToken(reason)) throw new ArgumentException("Invalid reason.", nameof(reason));
+        Append(new AuditEntry { Time = Now(), Packet = packet, Destination = destination, To = Removed, Reason = reason });
+    }
+
+    private DateTimeOffset Now() => PacketJson.TruncateToMilliseconds(time.GetUtcNow());
 
     private void Append(AuditEntry entry)
     {

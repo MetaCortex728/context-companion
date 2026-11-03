@@ -77,6 +77,7 @@ public class PacketValidatorTests : IDisposable
         "window-title-too-long", "capture-mode-uppercase", "region-zero-width", "region-missing-y", "region-huge",
         "scale-zero", "scale-too-large", "scale-string", "redactions-not-array", "redaction-missing-reason",
         "redaction-unknown-property", "redaction-item-unlisted", "redaction-count-zero", "redaction-kind-spaces",
+        "redaction-rule-spaces", "redaction-pattern-uppercase",
         "window-class-empty", "executable-path-control", "executable-path-too-long", "manifest-array",
     };
 
@@ -146,6 +147,8 @@ public class PacketValidatorTests : IDisposable
                 case "redaction-unknown-property": redaction["removed_text"] = "hunter2"; break;
                 case "redaction-item-unlisted": redaction["item"] = "elsewhere.txt"; break;
                 case "redaction-count-zero": redaction["count"] = 0; break;
+                case "redaction-rule-spaces": redaction["rule"] = "a rule"; break;
+                case "redaction-pattern-uppercase": redaction["pattern"] = "JWT"; break;
                 case "redaction-kind-spaces": redaction["kind"] = "a secret"; break;
                 default: throw new ArgumentException(violation);
             }

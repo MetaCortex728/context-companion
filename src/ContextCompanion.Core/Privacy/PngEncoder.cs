@@ -7,8 +7,6 @@ namespace ContextCompanion.Core.Privacy;
 /// <summary>Turns pixels into an image file for a packet.</summary>
 public interface IImageEncoder
 {
-    /// <summary>File name of the image item, for example <c>capture.png</c>.</summary>
-    string FileName { get; }
     /// <summary>Media type, for example <c>image/png</c>.</summary>
     string MediaType { get; }
     byte[] Encode(BgraImage image);
@@ -23,7 +21,6 @@ public sealed class PngEncoder : IImageEncoder
     private static readonly byte[] Signature = [137, 80, 78, 71, 13, 10, 26, 10];
     private static readonly uint[] CrcTable = BuildCrcTable();
 
-    public string FileName => "capture.png";
     public string MediaType => "image/png";
 
     public byte[] Encode(BgraImage image)

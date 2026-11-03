@@ -59,7 +59,7 @@ public static class PacketValidator
     internal static readonly HashSet<string> ItemKeys = ["kind", "file", "media_type", "bytes", "sha256"];
     internal static readonly HashSet<string> SourceKeys = ["process_name", "window_class", "window_title", "executable_path", "capture_mode", "region", "scale"];
     internal static readonly HashSet<string> RegionKeys = ["x", "y", "width", "height"];
-    internal static readonly HashSet<string> RedactionKeys = ["kind", "reason", "item", "count"];
+    internal static readonly HashSet<string> RedactionKeys = ["kind", "reason", "item", "rule", "pattern", "count"];
     internal static readonly HashSet<string> RedactionRequired = ["kind", "reason"];
     internal static readonly HashSet<string> AckKeys = ["format", "schema_version", "id", "consumer", "consumed", "note"];
     internal static readonly HashSet<string> AckRequired = ["format", "schema_version", "id", "consumer", "consumed"];
@@ -321,6 +321,12 @@ public static class PacketValidator
         if (redaction.TryGetProperty("item", out var item) &&
             (item.ValueKind != JsonValueKind.String || !fileNames.Contains(item.GetString()!)))
             schema($"{at}.item must name a file listed in items");
+        if (redaction.TryGetProperty("rule", out var rule) &&
+            (rule.ValueKind != JsonValueKind.String || !PacketNames.IsValidAgentName(rule.GetString())))
+            schema($"{at}.rule must be 1 to 64 characters from A-Z, a-z, 0-9, '.', '_' and '-'");
+        if (redaction.TryGetProperty("pattern", out var pattern) &&
+            (pattern.ValueKind != JsonValueKind.String || !PacketNames.IsValidToken(pattern.GetString())))
+            schema($"{at}.pattern must be a lower-case token such as jwt");
         if (redaction.TryGetProperty("count", out var count) && (!TryGetInteger(count, out long c) || c < 1 || c > int.MaxValue))
             schema($"{at}.count must be a positive integer");
     }

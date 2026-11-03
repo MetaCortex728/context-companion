@@ -115,6 +115,15 @@
         "kind": { "$ref": "#/$defs/token" },
         "reason": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 500 },
         "item": { "$ref": "#/$defs/fileName" },
+        "rule": {
+          "description": "For kind blackout: the name of the denylist rule that matched.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "pattern": {
+          "description": "For kind secret: the name of the redaction pattern that matched.",
+          "$ref": "#/$defs/token"
+        },
         "count": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
       }
     }

@@ -23,6 +23,22 @@ public sealed record PrivacySettings
     public MetadataSettings Metadata { get; set; } = new();
 
     /// <summary>
+    /// Windows whose content is never captured: a matching captured window is refused, and a matching window inside a
+    /// captured region is blacked out. Left out of the file, the default list of credential-handling applications
+    /// applies; an empty array switches the denylist off.
+    /// </summary>
+    public List<DenylistRule> Denylist { get; set; } = DefaultDenylist();
+
+    /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
+    public static List<DenylistRule> DefaultDenylist()
+    {
+        using var stream = typeof(PrivacySettings).Assembly.GetManifestResourceStream("ContextCompanion.Core.Privacy.denylist.json")
+            ?? throw new InvalidOperationException("The default denylist resource is missing.");
+        return JsonSerializer.Deserialize<List<DenylistRule>>(stream, PacketJson.Options)
+            ?? throw new InvalidOperationException("The default denylist resource is empty.");
+    }
+
+    /// <summary>
     /// The settings used when there is no settings file: a new instance each time, so changing one never changes
     /// another. (Settings use setters rather than init-only properties because the source-generated JSON reader
     /// would otherwise reset properties missing from a file to zero instead of keeping their defaults.)
@@ -64,6 +80,7 @@ public sealed record PrivacySettings
         var problems = new List<string>();
         if (SchemaVersion != CurrentSchemaVersion) problems.Add($"schema_version must be {CurrentSchemaVersion}");
         if (Metadata is null) problems.Add("metadata must be an object");
+        problems.AddRange(Privacy.Denylist.Validate(Denylist));
         return problems;
     }
 

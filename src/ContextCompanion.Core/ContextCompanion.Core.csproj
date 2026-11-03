@@ -6,6 +6,11 @@
     <RootNamespace>ContextCompanion.Core</RootNamespace>
   </PropertyGroup>
 
+  <!-- Default privacy data, documented in PRIVACY.md and editable through the settings file. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Privacy\Defaults\denylist.json" LogicalName="ContextCompanion.Core.Privacy.denylist.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="ContextCompanion.Core.Tests" />
   </ItemGroup>
