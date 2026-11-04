@@ -185,7 +185,7 @@ ccomp: capture works only on Windows, with the Windows build of ccomp. Nothing w
 
 ## Origin
 
-Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking.
+Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking. [docs/provenance.md](docs/provenance.md) lists the dated evidence: the recorded edits and checks of 23 October, file hashes, and how each prototype part carried over.
 
 `prototype/` keeps only the parts this project reuses, unchanged except as noted:
 
