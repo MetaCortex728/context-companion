@@ -24,10 +24,11 @@ public class CaptureTests
             AssertColour(image, offsetX + i % 2 * 200 + 100, offsetY + i / 2 * 150 + 75, TestWindow.Blocks[i]);
     }
 
-    [WgcWindowFact]
+    [WgcFact]
     public void WindowCaptureWithWindowsGraphicsCaptureHasTheBlocksAndTheWindowSize()
     {
-        // An ordinary top-level window, like the windows people capture, rather than the default tool window.
+        // An ordinary top-level window, like the windows people capture. On the windows-latest runner (Windows Server
+        // 2025) CreateForWindow returns E_INVALIDARG for a tool window; Windows 11 accepts both.
         using var window = new TestWindow(toolWindow: false);
         var frame = new WindowsScreenCapturer(CaptureMethods.WgcOnly).CaptureWindow(window.Handle, includeCursor: false);
         Assert.Equal("wgc", frame.Method);
