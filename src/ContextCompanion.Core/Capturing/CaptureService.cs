@@ -20,6 +20,14 @@ public enum CaptureOutcomeStatus
     NoText,
     /// <summary>Every capture method failed.</summary>
     Failed,
+    /// <summary>The user discarded the capture in the preview; nothing was queued or written.</summary>
+    Discarded,
+}
+
+/// <summary>What the user decided in a preview: send the capture (with an optional note) or discard it.</summary>
+public sealed record ReviewDecision(bool Deliver, string? Note = null)
+{
+    public static ReviewDecision Discard { get; } = new(false);
 }
 
 /// <summary>
@@ -60,6 +68,13 @@ public sealed class CaptureService
     }
 
     private CaptureSettings Settings => pipeline.Settings.Capture;
+
+    /// <summary>
+    /// When set, each capture is shown to this callback after the privacy rules have run and before anything is
+    /// packaged or queued; it receives the redacted capture and its mode and returns the user's decision. It is called
+    /// on the capturing thread and may block until the user decides.
+    /// </summary>
+    public Func<PreparedCapture, string, ReviewDecision>? Reviewer { get; set; }
 
     /// <summary>Captures one top-level window.</summary>
     public CaptureOutcome CaptureWindow(nint window)
@@ -160,8 +175,13 @@ public sealed class CaptureService
 
     private CaptureOutcome Process(CaptureRequest request, string mode)
     {
-        var result = pipeline.Process(request);
-        return From(result, mode);
+        if (Reviewer is not { } review) return From(pipeline.Process(request), mode);
+        var prepared = pipeline.Prepare(request);
+        if (prepared.Refusal is { } refusal) return From(refusal, mode);
+        var decision = review(prepared.Capture!, mode);
+        if (!decision.Deliver)
+            return new CaptureOutcome { Status = CaptureOutcomeStatus.Discarded, Mode = mode, Message = "Discarded in the preview; nothing was queued." };
+        return From(pipeline.Queue(prepared.Capture!, decision.Note), mode);
     }
 
     private static CaptureSource SourceOf(WindowInfo info, string mode) => new()

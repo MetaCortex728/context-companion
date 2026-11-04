@@ -41,6 +41,9 @@ public sealed record PrivacySettings
     /// <summary>How window, region and text captures are taken: image size, the pointer, the explicit copy.</summary>
     public Capturing.CaptureSettings Capture { get; set; } = new();
 
+    /// <summary>Settings of the tray app: inbox, hotkeys, wheel gesture and preview.</summary>
+    public Shell.ShellSettings App { get; set; } = new();
+
     /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
     public static List<DenylistRule> DefaultDenylist()
     {
@@ -101,6 +104,8 @@ public sealed record PrivacySettings
         else problems.AddRange(Redaction.Validate());
         if (Capture is null) problems.Add("capture must be an object");
         else problems.AddRange(Capture.Validate());
+        if (App is null) problems.Add("app must be an object");
+        else problems.AddRange(App.Validate());
         return problems;
     }
 
