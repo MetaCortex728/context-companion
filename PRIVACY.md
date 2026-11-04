@@ -2,11 +2,15 @@
 
 context-companion hands context you choose to AI tools. Privacy here means that what you capture, and the people who appear in it, go nowhere you did not intend. It never means hiding the tool: context-companion does not hide its windows or itself from screen capture or from other people (see [ROADMAP.md](ROADMAP.md), *No concealment*).
 
-This document describes what is implemented in `ContextCompanion.Core`, `ContextCompanion.Platform.Windows` and `ccomp` today. Window, region and text capture (run with `ccomp capture` until the tray app gets its triggers) hand their results to the privacy pipeline described here, so nothing reaches a packet before these rules have run. How capture itself works, including the clipboard rules for text, is in [docs/capture.md](docs/capture.md).
+This document describes what is implemented in the tray app, `ContextCompanion.Core`, `ContextCompanion.Platform.Windows` and `ccomp` today. Every capture, from the app or from `ccomp capture`, goes through the privacy pipeline described here, so nothing reaches a packet before these rules have run. How capture itself works, including the clipboard rules for text, is in [docs/capture.md](docs/capture.md).
 
 ## What is captured, and when
 
-Only when you trigger a capture. There are no timers, no background recording and no audio. Each trigger takes one frame of one window or region, or one piece of text. While Windows.Graphics.Capture takes the frame, Windows shows its capture border; context-companion never turns it off.
+Only when you trigger a capture: a hotkey, the tray menu, the horizontal-wheel gesture if you switched it on, or `ccomp capture`. There are no timers, no background recording and no audio. Each trigger takes one frame of one window or region, or one piece of text. The tray icon is visible whenever the app runs.
+
+The hotkeys are registered with Windows (`RegisterHotKey`); the app sees only that its own hotkey was pressed, not other keys. The wheel gesture, off by default, needs a low-level mouse hook: it looks only at horizontal-wheel events, passes every other mouse event on untouched, and records nothing about any of them.
+
+With **preview** on (the default), each capture is shown after the privacy rules below have run and before anything is packaged: blackouts applied, secrets redacted, only the source details you left on. What the preview shows is exactly what the packet will hold. Send queues it, with an optional note that is redacted the same way; Discard drops it, and nothing about it is written. While Windows.Graphics.Capture takes the frame, Windows shows its capture border; context-companion never turns it off.
 
 Before anything is taken, the target window is checked against the denylist: a denylisted window is refused before any pixels are grabbed and before a copy keystroke could reach it. Minimised windows and windows an application protects from capture are refused too.
 
@@ -33,8 +37,8 @@ The pipeline works on a copy of the pixels; it never changes the caller's buffer
 | Inbox folder: `<id>/` | Delivered packets: `manifest.json`, payload files, and `ack.json` once a consumer acknowledged it. |
 | Inbox folder: `.audit.jsonl` | The inbox's audit log (removals by retention and `ccomp purge`). The app can share one log between outbox and inbox. |
 | Inbox folder: `.tmp/` | Staging for atomic writes and removals. Never a packet. |
-| Settings file (JSON) | The privacy settings below and the capture settings ([docs/capture.md](docs/capture.md#settings)). Read with `PrivacySettings.LoadOrDefault`; without a file the defaults apply. |
-| `ccomp capture` outbox: `%LOCALAPPDATA%\context-companion\outbox` | The outbox `ccomp capture` uses unless given `--outbox`. Its audit entries go to the inbox's `.audit.jsonl`. |
+| Settings file (JSON) | `%APPDATA%\context-companion\settings.json` for the tray app (or `--settings <file>`): the privacy, capture and app settings below. Without a file the defaults apply. |
+| Outbox: `%LOCALAPPDATA%\context-companion\outbox` | The outbox of the tray app, and of `ccomp capture` unless given `--outbox`. Its audit entries go to the inbox's `.audit.jsonl`. |
 
 Everything stays on the local disk. There is no network code and no telemetry.
 
@@ -58,7 +62,11 @@ The settings are a JSON file with snake_case names. Unknown properties are rejec
   "redaction": { "secrets": true, "disabled_patterns": [], "extra_patterns": [] },
   "retention": { "max_packets": 200, "max_bytes": 536870912, "max_age": "7d" },
   "encryption": { "enabled": false, "protection": "dpapi-current-user" },
-  "capture": { "max_long_edge": 1568, "include_cursor": false, "explicit_copy": true, "copy_timeout_ms": 500, "extra_terminal_window_classes": [] }
+  "capture": { "max_long_edge": 1568, "include_cursor": false, "explicit_copy": true, "copy_timeout_ms": 500, "extra_terminal_window_classes": [] },
+  "app": {
+    "inbox": null, "preview": true, "wheel_gesture": false, "pointer_region_fraction": 0.4,
+    "hotkeys": { "window": "Ctrl+Alt+W", "region": "Ctrl+Alt+R", "text": "Ctrl+Alt+T" }
+  }
 }
 ```
 
@@ -80,6 +88,11 @@ The settings are a JSON file with snake_case names. Unknown properties are rejec
 | `retention.max_age` | `7d` | Oldest packet an inbox keeps: a number followed by `s`, `m`, `h`, `d` or `w`. `null` for no limit. |
 | `encryption.enabled` | off | Stores payload files encrypted. See [Encryption at rest](#encryption-at-rest). |
 | `encryption.protection` | `dpapi-current-user` | Which protector to use. |
+| `app.inbox` | `%USERPROFILE%\ContextCompanion\inbox` | The tray app's inbox folder. |
+| `app.preview` | on | Shows each capture, after the privacy rules, before it is queued. The tray menu switches it for the running session. |
+| `app.wheel_gesture` | off | Tilting the wheel left captures the foreground window, right a region around the pointer. Needs a low-level mouse hook. |
+| `app.pointer_region_fraction` | 0.4 | Share of the monitor's width and height that the pointer region covers. |
+| `app.hotkeys.*` | Ctrl+Alt+W, R, T | Window, region and text hotkeys. Each needs Ctrl, Alt or Win; `""` switches one off. |
 | `capture.*` | see [docs/capture.md](docs/capture.md#settings) | Image size (default long edge 1568 px), the mouse pointer (off), the explicit copy for text (on) and its timeout (500 ms), extra terminal window classes. |
 
 A field that is switched off is removed before anything else reads the metadata, which the tests check against the manifest, the outbox, the audit log and error messages. The denylist still sees the window title for matching even when titles are not recorded; it never writes it anywhere.
