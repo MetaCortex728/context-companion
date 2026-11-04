@@ -38,7 +38,7 @@ public class AuditViewerTests
 
         Assert.Equal(Cli.Ok, exit);
         Assert.Equal("", error);
-        string[] lines = output.TrimEnd().Split('\n');
+        string[] lines = output.TrimEnd().ReplaceLineEndings("\n").Split('\n');
         Assert.Matches(@"^TIME\s+PACKET\s+DESTINATION\s+CHANGE\s+REASON$", lines[0]);
         Assert.Matches(@"^2026-11-03T15:04:05\.\d{3}Z\s+-\s+-\s+- -> blocked\s+denylist rule keepass$", lines[1]);
         Assert.Matches($@"^\S+\s+{id}\s+inbox\s+- -> queued$", lines[2]);
@@ -71,7 +71,7 @@ public class AuditViewerTests
         Assert.Contains("0 entries.", Run(harness.Time, "audit", harness.Inbox.Root, "--since", "2026-11-04T00:00:00Z").Output, StringComparison.Ordinal);
 
         var json = Run(harness.Time, "audit", harness.Inbox.Root, "--json");
-        string[] lines = json.Output.TrimEnd().Split('\n');
+        string[] lines = json.Output.TrimEnd().ReplaceLineEndings("\n").Split('\n');
         Assert.Equal(5, lines.Length);
         Assert.Equal(AuditLog.Read(harness.Audit.Path).Select(e => e.To), lines.Select(l => JsonDocument.Parse(l).RootElement.GetProperty("to").GetString()));
         Assert.Equal(File.ReadAllLines(harness.Audit.Path), lines);
