@@ -38,6 +38,9 @@ public sealed record PrivacySettings
     /// <summary>Encryption of payload files at rest. Off by default.</summary>
     public EncryptionSettings Encryption { get; set; } = new();
 
+    /// <summary>How window, region and text captures are taken: image size, the pointer, the explicit copy.</summary>
+    public Capturing.CaptureSettings Capture { get; set; } = new();
+
     /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
     public static List<DenylistRule> DefaultDenylist()
     {
@@ -96,6 +99,8 @@ public sealed record PrivacySettings
         else if (!PacketNames.IsValidToken(Encryption.Protection)) problems.Add("encryption.protection must be a lower-case token such as dpapi-current-user");
         if (Redaction is null) problems.Add("redaction must be an object");
         else problems.AddRange(Redaction.Validate());
+        if (Capture is null) problems.Add("capture must be an object");
+        else problems.AddRange(Capture.Validate());
         return problems;
     }
 

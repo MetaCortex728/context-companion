@@ -10,6 +10,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Privacy\Defaults\denylist.json" LogicalName="ContextCompanion.Core.Privacy.denylist.json" />
     <EmbeddedResource Include="Privacy\Defaults\secret-patterns.json" LogicalName="ContextCompanion.Core.Privacy.secret-patterns.json" />
+    <EmbeddedResource Include="Capturing\Defaults\no-copy-window-classes.json" LogicalName="ContextCompanion.Core.Capturing.no-copy-window-classes.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "description": "Window classes of consoles and terminals. In these windows Ctrl+C interrupts the running program, so context-companion never sends it there: the explicit copy is skipped. Matching ignores case. Documented in docs/capture.md.",
+  "window_classes": [
+    { "class": "ConsoleWindowClass", "application": "Windows console host (cmd, PowerShell, other console programs)" },
+    { "class": "CASCADIA_HOSTING_WINDOW_CLASS", "application": "Windows Terminal" },
+    { "class": "mintty", "application": "mintty (Git Bash, Cygwin, MSYS2)" },
+    { "class": "PuTTY", "application": "PuTTY" },
+    { "class": "VirtualConsoleClass", "application": "ConEmu and Cmder" },
+    { "class": "org.wezfurlong.wezterm", "application": "WezTerm" },
+    { "class": "Alacritty", "application": "Alacritty" }
+  ]
+}
