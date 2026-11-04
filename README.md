@@ -2,7 +2,7 @@
 
 A lightweight Windows utility for handing your own context to AI tools. When you press a key or make a gesture, it captures exactly what you choose (a window, a screen region, selected text), packages it as a documented packet with hashes and source details, and delivers it to a local inbox folder that coding agents and other tools can read. It records nothing in the background, does no reasoning of its own and favours no AI vendor.
 
-Status: planning. See [ROADMAP.md](ROADMAP.md).
+Status: the first half of Stage 1 of the [roadmap](ROADMAP.md) works and is tested on Linux and Windows: the packet format and `ccomp`, the outbox with delivery receipts and the audit log, and the privacy pipeline. Capture itself (window, region and selected text), hotkeys and the tray app's delivery to the inbox are next.
 
 ## Layout
 
