@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/context-companion/context-companion/schema/packet.schema.json",
+  "title": "context-companion packet manifest, format v1",
+  "description": "The manifest.json of a packet folder inbox/<id>/. See docs/packet-format.md. Folder-level rules (exact file set, sizes, hashes, folder name equal to id, case-insensitive uniqueness of file names, reserved Windows device names) cannot be expressed here and are checked by `ccomp validate`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schema_version", "id", "created", "items", "redactions"],
+  "properties": {
+    "format": { "const": "context-companion.packet" },
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/ulid" },
+    "created": { "$ref": "#/$defs/utcTimestamp" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "redactions": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/redaction" }
+    }
+  },
+  "$defs": {
+    "ulid": {
+      "description": "Canonical upper-case ULID: Crockford base32, 26 characters, first character 0-7.",
+      "type": "string",
+      "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "utcTimestamp": {
+      "description": "UTC ISO 8601 date and time ending in Z, for example 2026-11-03T15:04:05.123Z.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,7})?Z$"
+    },
+    "fileName": {
+      "description": "A plain file name inside the packet, never a path. Also not CON, PRN, AUX, NUL, COM0-9, LPT0-9 (with or without extension, ignoring case), manifest.json or ack.json.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9_-]|\\.(?!\\.))*(?<!\\.)$"
+    },
+    "token": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    },
+    "plainLine": {
+      "description": "Text without control characters.",
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "file", "media_type", "bytes", "sha256"],
+      "properties": {
+        "kind": { "enum": ["image", "text", "audio", "note"] },
+        "file": { "$ref": "#/$defs/fileName" },
+        "media_type": {
+          "type": "string",
+          "maxLength": 127,
+          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]{0,62}/[a-z0-9][a-z0-9!#$&^_.+-]{0,62}$"
+        },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+        "sha256": { "description": "SHA-256 of the plaintext.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "stored": {
+          "description": "Present when the item is stored encrypted. The file in the folder is stored.file; bytes and sha256 above describe the plaintext, stored.bytes and stored.sha256 the encrypted file. For protection dpapi-current-user, stored.file is the item's file name followed by .dpapi.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "bytes", "sha256", "protection"],
+          "properties": {
+            "file": { "$ref": "#/$defs/fileName" },
+            "bytes": { "type": "integer", "minimum": 0, "maximum": 68157440 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "protection": { "$ref": "#/$defs/token" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "image" } } },
+          "then": { "properties": { "media_type": { "pattern": "^image/" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "audio" } } },
+          "then": { "properties": { "media_type": { "pattern": "^audio/" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["text", "note"] } } },
+          "then": { "properties": { "media_type": { "pattern": "^text/" } } }
+        }
+      ]
+    },
+    "source": {
+      "description": "Where the content came from. Every field is optional; each can be switched off in the privacy settings, and a field that is off is never written.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "process_name": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 260 },
+        "window_class": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 256 },
+        "window_title": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "maxLength": 1024 },
+        "executable_path": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 32767 },
+        "capture_mode": { "$ref": "#/$defs/token" },
+        "region": {
+          "description": "Captured rectangle in physical screen pixels.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "y": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "width": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+          }
+        },
+        "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 16 }
+      }
+    },
+    "redaction": {
+      "description": "What was removed and why. Never the removed content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/token" },
+        "reason": { "allOf": [{ "$ref": "#/$defs/plainLine" }], "minLength": 1, "maxLength": 500 },
+        "item": { "$ref": "#/$defs/fileName" },
+        "rule": {
+          "description": "For kind blackout: the name of the denylist rule that matched.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "pattern": {
+          "description": "For kind secret: the name of the redaction pattern that matched.",
+          "$ref": "#/$defs/token"
+        },
+        "count": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+      }
+    }
+  }
+}

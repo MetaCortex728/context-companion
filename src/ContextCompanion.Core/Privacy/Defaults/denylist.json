@@ -1,0 +1,10 @@
+[
+  { "name": "keepass", "process_name": "KeePass.exe", "description": "KeePass Password Safe" },
+  { "name": "keepassxc", "process_name": "KeePassXC.exe", "description": "KeePassXC" },
+  { "name": "1password", "process_name": "1Password.exe", "description": "1Password desktop app" },
+  { "name": "bitwarden", "process_name": "Bitwarden.exe", "description": "Bitwarden desktop app" },
+  { "name": "enpass", "process_name": "Enpass.exe", "description": "Enpass" },
+  { "name": "nordpass", "process_name": "NordPass.exe", "description": "NordPass" },
+  { "name": "windows-credential-prompt", "process_name": "CredentialUIBroker.exe", "description": "Windows credential prompt (Windows Security sign-in dialog)" },
+  { "name": "windows-uac-prompt", "process_name": "consent.exe", "description": "User Account Control prompt" }
+]
