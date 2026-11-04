@@ -1,6 +1,9 @@
 using System.Runtime.InteropServices;
 using ContextCompanion.Platform.Windows.Capture;
 
+// Desktop tests share the foreground window, the focus and the clipboard, so they must not run in parallel.
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
+
 namespace ContextCompanion.Platform.Windows.Tests;
 
 /// <summary>Why desktop tests cannot run in this session, or null when they can.</summary>

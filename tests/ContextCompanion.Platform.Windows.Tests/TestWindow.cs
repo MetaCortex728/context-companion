@@ -56,7 +56,10 @@ internal sealed class TestWindow : IDisposable
                         Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
                 if (withTextBox)
                 {
-                    box = CreateWindowEx(0, "EDIT", BoxText, WS_CHILD | WS_VISIBLE | WS_BORDER, 20, 20, 360, 30, Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                    // RichEdit 4.1 implements UI Automation's TextPattern natively, as editors such as Notepad
+                    // and browsers do; a plain EDIT without comctl32 v6 is served by the MSAA proxy, which has no TextPattern.
+                    if (LoadLibrary("msftedit.dll") == IntPtr.Zero) throw new InvalidOperationException("msftedit.dll could not be loaded.");
+                    box = CreateWindowEx(0, "RICHEDIT50W", BoxText, WS_CHILD | WS_VISIBLE | WS_BORDER, 20, 20, 360, 30, Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
                     FocusBox();
                 }
                 UpdateWindow(Handle);
@@ -85,13 +88,42 @@ internal sealed class TestWindow : IDisposable
     /// <summary>Brings the window to the foreground and focuses the text box. Fails the test if Windows refuses.</summary>
     public void Activate()
     {
-        // A synthetic Alt press lets this process take the foreground (SetForegroundWindow rules).
-        keybd_event(0x12, 0, 0, UIntPtr.Zero);
-        keybd_event(0x12, 0, 2, UIntPtr.Zero);
-        SetForegroundWindow(Handle);
-        PostThreadMessage(threadId, WM_FOCUS_BOX, IntPtr.Zero, IntPtr.Zero);
-        Thread.Sleep(300);
-        Assert.True(GetForegroundWindow() == Handle, "Windows did not let the test window take the foreground.");
+        // SetForegroundWindow is refused to a background process while someone else holds the foreground.
+        // Attaching to the foreground window's input queue and a synthetic Alt press are the usual ways
+        // a process the user started is allowed to take it; retry briefly because activation is asynchronous.
+        // Another window can take the foreground back while the box is being focused, so a round
+        // counts only if the window still holds the foreground after the focus has settled.
+        for (int round = 0; round < 5; round++)
+        {
+            TakeForeground();
+            PostThreadMessage(threadId, WM_FOCUS_BOX, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(300);
+            if (GetForegroundWindow() == Handle) return;
+        }
+        Assert.Fail("Windows did not let the test window take the foreground.");
+    }
+
+    private void TakeForeground()
+    {
+        for (int attempt = 0; attempt < 15 && GetForegroundWindow() != Handle; attempt++)
+        {
+            uint foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+            uint current = GetCurrentThreadId();
+            bool attached = foregroundThread != 0 && foregroundThread != current && AttachThreadInput(current, foregroundThread, true);
+            try
+            {
+                keybd_event(0x12, 0, 0, UIntPtr.Zero);
+                keybd_event(0x12, 0, 2, UIntPtr.Zero);
+                ShowWindow(Handle, 9 /* SW_RESTORE */);
+                BringWindowToTop(Handle);
+                SetForegroundWindow(Handle);
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(current, foregroundThread, false);
+            }
+            Thread.Sleep(200);
+        }
     }
 
     public void Dispose()
@@ -198,6 +230,11 @@ internal sealed class TestWindow : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr hWnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "LoadLibraryW", SetLastError = true)] private static extern IntPtr LoadLibrary(string name);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool doAttach);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool OpenClipboard(IntPtr owner);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseClipboard();
