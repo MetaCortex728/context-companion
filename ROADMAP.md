@@ -12,7 +12,7 @@ Privacy here means that what you capture, and the people who appear in it, go no
 - **Honesty about limits.** The documentation says what the tool cannot guarantee, for example that some applications block capture.
 - **No concealment.** The tool does not hide itself or its output from other people. The only window excluded from capture is the transient selection rectangle, so that it does not appear in the image being taken.
 
-## Stage 1: capture to inbox
+## Stage 1: capture to inbox (done)
 
 1. **Project layout:** `ContextCompanion.Core` (platform-neutral, tested on Linux and Windows), `ContextCompanion.App` (WPF tray app), tests, CI (about 2 hours).
 2. **Packet format v1:** specification and JSON Schema (ULID identifier, creation time, items, per-item SHA-256, source details, redaction record, schema version); atomic inbox writer (write to a temporary folder, then rename); a validator command; consumer acknowledgements in `ack.json` (about 4 hours).
@@ -24,7 +24,7 @@ Privacy here means that what you capture, and the people who appear in it, go no
 8. **Inbox delivery:** destination interface, the inbox destination, a small reference consumer that reads a packet and acknowledges it, and instructions for coding agents to read packets by path (about 2 hours).
 9. **Evidence:** measured idle CPU and memory and capture-to-inbox latency, published in the README (about 2 hours).
 
-## Stage 2: more inputs and destinations
+## Stage 2: more inputs and destinations (next)
 
 10. **MCP server:** a separate stdio server exposing inbox packets as resources, with list, get and acknowledge tools, and a one-click bundle; verified with real clients (about 5 hours).
 11. **Audio clips:** push-to-hold recording, 16 kHz mono WAV, capped length, raw clip kept in the packet; the microphone indicator stays visible (about 2 hours).
@@ -33,10 +33,13 @@ Privacy here means that what you capture, and the people who appear in it, go no
 14. **Window text and OCR:** the text an application exposes beyond the visible pixels, and OCR as a fallback, both passed through redaction (about 3 hours).
 15. **Reliability:** sleep and wake, display and DPI changes, recovery after Windows removes the mouse hook, duplicate launches, a 24-hour run with bounded memory (about 3 hours).
 
+## Stage 3: sharing and installation
+
+16. **Per-destination privacy profiles:** each destination gets its own metadata switches, denylist additions and redaction patterns, so that, for example, a work destination never receives window titles; the preview shows which profile applies (about 3 hours).
+17. **Signed packets:** an optional signature over the manifest with a per-user key, verified by `ccomp validate` and the reference consumer, so a packet attached to a bug report or passed between people can be checked (about 3 hours).
+18. **Installation:** MSIX packaging and signed releases, start with Windows as an option, and settings editable from the tray instead of only in the JSON file (about 4 hours).
+
 ## Later
 
-- Signed releases and MSIX packaging.
 - Further destinations on equal footing.
-- Signed packets that can be attached to bug reports and shared between people.
 - A browser extension that adds the page address and selection to a packet.
-- Per-destination privacy profiles.
