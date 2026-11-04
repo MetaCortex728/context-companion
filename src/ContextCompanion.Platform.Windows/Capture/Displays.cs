@@ -66,4 +66,27 @@ public static class Displays
 
     internal static RECT ToRect(ScreenRect r) => new() { Left = r.X, Top = r.Y, Right = (int)r.Right, Bottom = (int)r.Bottom };
     internal static ScreenRect FromRect(RECT r) => new(r.Left, r.Top, r.Width, r.Height);
+
+    /// <summary>A monitor handle's full rectangle, or null.</summary>
+    public static ScreenRect? BoundsOfMonitor(IntPtr monitor) => BoundsOf(monitor);
+
+    /// <summary>Every monitor's full rectangle, in the order Windows lists them.</summary>
+    public static IReadOnlyList<ScreenRect> AllMonitors()
+    {
+        var monitors = new List<ScreenRect>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (handle, _, _, _) =>
+        {
+            if (BoundsOf(handle) is { } bounds) monitors.Add(bounds);
+            return true;
+        }, IntPtr.Zero);
+        return monitors;
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, IntPtr rect, IntPtr data);
+
+#pragma warning disable SYSLIB1054 // LibraryImport needs unsafe code, which the repository does not allow.
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+#pragma warning restore SYSLIB1054
 }
