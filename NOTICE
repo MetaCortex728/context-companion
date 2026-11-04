@@ -8,13 +8,41 @@ Third-party components
 The shipped programs (ContextCompanion.Core, ContextCompanion.App,
 ContextCompanion.Platform.Windows and the `ccomp` tool) use the .NET 10
 runtime and the Windows Desktop runtime (WPF, and Windows Forms for the tray
-icon), both MIT licensed by the .NET Foundation and Microsoft, and one package:
+icon), both MIT licensed by the .NET Foundation and Microsoft, and the
+packages below.
 
 DPAPI (ContextCompanion.Platform.Windows, and the Windows build of `ccomp`):
   System.Security.Cryptography.ProtectedData 10.0.0
   Copyright (c) .NET Foundation and Contributors
   Licence: MIT
   https://github.com/dotnet/runtime
+
+Windows Runtime projections (ContextCompanion.Platform.Windows, the app and
+the Windows build of `ccomp`, through the net10.0-windows10.0.19041.0 target):
+  Microsoft.Windows.SDK.NET.Ref 10.0.19041.57, selected by the .NET SDK for
+  that target framework, used for Windows.Graphics.Capture. It contains:
+  - Microsoft.Windows.SDK.NET.dll, the Windows SDK projection
+    Copyright (c) Microsoft Corporation
+    Licence: Microsoft Windows SDK licence terms, https://aka.ms/WinSDKLicenseURL
+  - WinRT.Runtime.dll, the C#/WinRT runtime
+    Copyright (c) Microsoft Corporation
+    Licence: MIT
+    https://github.com/microsoft/CsWinRT
+
+Direct3D 11 interop for Windows.Graphics.Capture frames
+(ContextCompanion.Platform.Windows):
+  Vortice.Direct3D11 3.8.3, Vortice.DXGI 3.8.3, Vortice.DirectX 3.8.3,
+  Vortice.Mathematics 2.1.0
+  Copyright (c) Amer Koleci and Contributors
+  Licence: MIT
+  https://github.com/amerkoleci/Vortice.Windows
+
+  SharpGen.Runtime 2.4.2-beta, SharpGen.Runtime.COM 2.4.2-beta
+  (pulled in by Vortice)
+  Copyright (c) 2010-2017 Alexandre Mutel, 2017-2023 Jeremy Koritzinsky,
+  2023-2024 Amer Koleci
+  Licence: MIT
+  https://github.com/SharpGenTools/SharpGenTools
 
 ContextCompanion.Core takes no package dependencies.
 
