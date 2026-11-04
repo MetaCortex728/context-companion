@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using System.Security.Cryptography;
 using ContextCompanion.Core.Delivery;
+using ContextCompanion.Core.Packets;
 using ContextCompanion.Core.Privacy;
 
 namespace ContextCompanion.Core.Tests;
@@ -122,13 +124,13 @@ internal sealed class PipelineHarness : IDisposable
 {
     private readonly TempDirectory temp = new();
 
-    public PipelineHarness(PrivacySettings? settings = null, OutboxOptions? options = null)
+    public PipelineHarness(PrivacySettings? settings = null, OutboxOptions? options = null, IPayloadProtector? protector = null)
     {
         Time = new ManualTime(Samples.Start);
         Audit = new AuditLog(temp.Combine("inbox", ".audit.jsonl"), Time);
         Outbox = new Outbox(temp.Combine("outbox"), options, Audit, Time);
         Inbox = new InboxDestination(temp.Combine("inbox"));
-        Pipeline = new PrivacyPipeline(settings ?? PrivacySettings.Default, Outbox, Inbox.Name, time: Time);
+        Pipeline = new PrivacyPipeline(settings ?? PrivacySettings.Default, Outbox, Inbox.Name, protector, time: Time);
     }
 
     public ManualTime Time { get; }
@@ -154,4 +156,24 @@ internal sealed class PipelineHarness : IDisposable
             .Select(f => Encoding.UTF8.GetString(File.ReadAllBytes(f))));
 
     public void Dispose() => temp.Dispose();
+}
+
+/// <summary>
+/// A test-only, reversible stand-in for an encryptor (XOR with a fixed byte behind a magic prefix). It is not
+/// encryption; it lets the encryption-at-rest paths run on any platform. DPAPI itself is tested on Windows.
+/// </summary>
+internal sealed class TestProtector(string protection = "test-xor", string extension = "testxor") : IPayloadProtector
+{
+    private static readonly byte[] Magic = "TPX1"u8.ToArray();
+    public string Protection { get; } = protection;
+    public string FileExtension { get; } = extension;
+
+    public byte[] Protect(byte[] plaintext) => [.. Magic, .. plaintext.Select(b => (byte)(b ^ 0x5A))];
+
+    public byte[] Unprotect(byte[] stored)
+    {
+        if (stored.Length < Magic.Length || !stored.AsSpan(0, Magic.Length).SequenceEqual(Magic))
+            throw new CryptographicException("Not protected by the test protector.");
+        return stored.Skip(Magic.Length).Select(b => (byte)(b ^ 0x5A)).ToArray();
+    }
 }

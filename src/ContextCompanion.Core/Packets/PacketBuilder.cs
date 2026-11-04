@@ -16,7 +16,7 @@ public sealed class PacketDraft
 
     public PacketManifest Manifest { get; }
     public string Id => Manifest.Id;
-    /// <summary>Payload bytes keyed by item file name.</summary>
+    /// <summary>Payload bytes keyed by the name of the file in the packet folder (the stored form for encrypted items).</summary>
     public IReadOnlyDictionary<string, byte[]> Contents { get; }
     public long TotalBytes => Manifest.TotalBytes;
 
@@ -41,9 +41,12 @@ public sealed class PacketDraft
     {
         var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var item in packet.Manifest.Items)
-            contents[item.File] = File.ReadAllBytes(Path.Combine(packet.Directory, item.File));
+            contents[item.StoredFile] = File.ReadAllBytes(Path.Combine(packet.Directory, item.StoredFile));
         return new PacketDraft(packet.Manifest, contents);
     }
+
+    /// <summary>True when at least one item is stored encrypted.</summary>
+    public bool IsProtected => Manifest.Items.Any(i => i.Stored is not null);
 }
 
 /// <summary>

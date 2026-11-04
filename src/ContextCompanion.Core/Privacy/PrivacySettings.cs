@@ -35,6 +35,9 @@ public sealed record PrivacySettings
     /// <summary>What each inbox keeps; applied after every delivery and by <c>ccomp purge</c>.</summary>
     public RetentionSettings Retention { get; set; } = new();
 
+    /// <summary>Encryption of payload files at rest. Off by default.</summary>
+    public EncryptionSettings Encryption { get; set; } = new();
+
     /// <summary>The default denylist: common password managers and Windows credential prompts.</summary>
     public static List<DenylistRule> DefaultDenylist()
     {
@@ -89,6 +92,8 @@ public sealed record PrivacySettings
         problems.AddRange(Privacy.Denylist.Validate(Denylist));
         if (Retention is null) problems.Add("retention must be an object");
         else problems.AddRange(Retention.Validate());
+        if (Encryption is null) problems.Add("encryption must be an object");
+        else if (!PacketNames.IsValidToken(Encryption.Protection)) problems.Add("encryption.protection must be a lower-case token such as dpapi-current-user");
         if (Redaction is null) problems.Add("redaction must be an object");
         else problems.AddRange(Redaction.Validate());
         return problems;
@@ -182,6 +187,19 @@ public sealed record RetentionSettings
     /// <summary>The limits in the form <see cref="Delivery.InboxRetention"/> takes.</summary>
     public Delivery.RetentionLimits ToLimits() =>
         new(MaxPackets, MaxBytes, MaxAge is null ? null : Duration.Parse(MaxAge));
+}
+
+/// <summary>
+/// Encryption at rest. When enabled, every payload file of a new packet is stored encrypted (for DPAPI as
+/// <c>&lt;file&gt;.dpapi</c>) in the outbox and in the inbox it is delivered to. Off by default, because the inbox is the
+/// hand-off point that assistants read by path; consumers then need <c>ccomp open</c> to get a plaintext copy.
+/// </summary>
+public sealed record EncryptionSettings
+{
+    /// <summary>Encrypt payload files. Default off.</summary>
+    public bool Enabled { get; set; }
+    /// <summary>Which protector to use. Default <c>dpapi-current-user</c> (Windows only).</summary>
+    public string Protection { get; set; } = PacketFormat.DpapiCurrentUser;
 }
 
 /// <summary>Invalid privacy settings. Messages name settings and rules, never captured content.</summary>

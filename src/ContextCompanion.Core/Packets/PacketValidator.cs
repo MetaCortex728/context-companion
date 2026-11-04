@@ -24,6 +24,8 @@ public enum PacketProblemKind
     Identity,
     /// <summary><c>ack.json</c> is present but invalid.</summary>
     Acknowledgement,
+    /// <summary>An encrypted item cannot be decrypted, or its plaintext differs from the manifest.</summary>
+    Protection,
 }
 
 public sealed record PacketProblem(PacketProblemKind Kind, string Message)
@@ -34,9 +36,10 @@ public sealed record PacketProblem(PacketProblemKind Kind, string Message)
 public sealed class PacketValidationResult
 {
     internal PacketValidationResult(string directory, IReadOnlyList<PacketProblem> problems,
-        PacketManifest? manifest, PacketAcknowledgement? acknowledgement)
+        PacketManifest? manifest, PacketAcknowledgement? acknowledgement, int plaintextUnchecked = 0)
     {
         Directory = directory; Problems = problems; Manifest = manifest; Acknowledgement = acknowledgement;
+        PlaintextUnchecked = plaintextUnchecked;
     }
 
     public string Directory { get; }
@@ -45,6 +48,8 @@ public sealed class PacketValidationResult
     /// <summary>The manifest, when it passed the schema and file-name rules (the files may still be wrong).</summary>
     public PacketManifest? Manifest { get; }
     public PacketAcknowledgement? Acknowledgement { get; }
+    /// <summary>Encrypted items whose stored form was checked but whose plaintext was not, for lack of a protector.</summary>
+    public int PlaintextUnchecked { get; }
 }
 
 /// <summary>
@@ -56,7 +61,9 @@ public static class PacketValidator
 {
     internal static readonly HashSet<string> ManifestKeys = ["format", "schema_version", "id", "created", "items", "source", "redactions"];
     internal static readonly HashSet<string> ManifestRequired = ["format", "schema_version", "id", "created", "items", "redactions"];
-    internal static readonly HashSet<string> ItemKeys = ["kind", "file", "media_type", "bytes", "sha256"];
+    internal static readonly HashSet<string> ItemKeys = ["kind", "file", "media_type", "bytes", "sha256", "stored"];
+    internal static readonly HashSet<string> ItemRequired = ["kind", "file", "media_type", "bytes", "sha256"];
+    internal static readonly HashSet<string> StoredKeys = ["file", "bytes", "sha256", "protection"];
     internal static readonly HashSet<string> SourceKeys = ["process_name", "window_class", "window_title", "executable_path", "capture_mode", "region", "scale"];
     internal static readonly HashSet<string> RegionKeys = ["x", "y", "width", "height"];
     internal static readonly HashSet<string> RedactionKeys = ["kind", "reason", "item", "rule", "pattern", "count"];
@@ -69,8 +76,11 @@ public static class PacketValidator
         ["audio"] = PacketItemKind.Audio, ["note"] = PacketItemKind.Note,
     };
 
-    /// <summary>Validates a packet folder, including every file's size and hash.</summary>
-    public static PacketValidationResult ValidateDirectory(string packetDirectory)
+    /// <summary>
+    /// Validates a packet folder, including every file's size and hash. For an encrypted item the stored file's size and
+    /// hash are checked; its plaintext size and hash are checked too when a matching protector is given.
+    /// </summary>
+    public static PacketValidationResult ValidateDirectory(string packetDirectory, IEnumerable<IPayloadProtector>? protectors = null)
     {
         string directory = Path.GetFullPath(packetDirectory);
         var problems = new List<PacketProblem>();
@@ -110,7 +120,9 @@ public static class PacketValidator
         if (!string.Equals(info.Name, manifest.Id, StringComparison.Ordinal))
             problems.Add(new(PacketProblemKind.Identity, $"folder name '{info.Name}' differs from manifest id '{manifest.Id}'"));
 
-        var listed = manifest.Items.ToDictionary(i => i.File, StringComparer.Ordinal);
+        var listed = manifest.Items.ToDictionary(i => i.StoredFile, StringComparer.Ordinal);
+        var protectorList = protectors?.ToArray() ?? [];
+        int plaintextUnchecked = 0;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         FileInfo? ackFile = null;
         try
@@ -136,6 +148,9 @@ public static class PacketValidator
                     continue;
                 }
                 CheckItemFile((FileInfo)entry, listed[entry.Name], problems);
+                if (listed[entry.Name].Stored is { } stored && !CheckPlaintext((FileInfo)entry, listed[entry.Name],
+                        protectorList.FirstOrDefault(p => p.Protection == stored.Protection), problems))
+                    plaintextUnchecked++;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -144,8 +159,8 @@ public static class PacketValidator
         }
 
         foreach (var item in manifest.Items)
-            if (!seen.Contains(item.File))
-                problems.Add(new(PacketProblemKind.MissingFile, $"'{item.File}' is listed but missing"));
+            if (!seen.Contains(item.StoredFile))
+                problems.Add(new(PacketProblemKind.MissingFile, $"'{item.StoredFile}' is listed but missing"));
 
         PacketAcknowledgement? ack = null;
         if (ackFile is not null)
@@ -154,32 +169,60 @@ public static class PacketValidator
             ack = ReadAcknowledgementFile(ackFile.FullName, manifest.Id, ackProblems);
             problems.AddRange(ackProblems.Select(m => new PacketProblem(PacketProblemKind.Acknowledgement, m)));
         }
-        return new(directory, problems, manifest, ack);
+        return new(directory, problems, manifest, ack, plaintextUnchecked);
 
         PacketValidationResult Fail(PacketProblemKind kind, string message) =>
             new(directory, [new PacketProblem(kind, message)], null, null);
     }
 
+    /// <summary>Checks the file in the folder: the plaintext, or for an encrypted item its stored form.</summary>
     private static void CheckItemFile(FileInfo file, PacketItem item, List<PacketProblem> problems)
     {
+        string name = item.StoredFile;
+        long bytes = item.Stored?.Bytes ?? item.Bytes;
+        string sha256 = item.Stored?.Sha256 ?? item.Sha256;
         try
         {
-            if (file.Length != item.Bytes)
+            if (file.Length != bytes)
             {
-                problems.Add(new(PacketProblemKind.Size, $"'{item.File}' has {file.Length} bytes, manifest says {item.Bytes}"));
+                problems.Add(new(PacketProblemKind.Size, $"'{name}' has {file.Length} bytes, manifest says {bytes}"));
                 return;
             }
             using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 81920);
             string hash = Convert.ToHexStringLower(SHA256.HashData(stream));
-            if (stream.Length != item.Bytes)
-                problems.Add(new(PacketProblemKind.Size, $"'{item.File}' changed size while being read"));
-            else if (!string.Equals(hash, item.Sha256, StringComparison.Ordinal))
-                problems.Add(new(PacketProblemKind.Hash, $"'{item.File}' SHA-256 differs from the manifest"));
+            if (stream.Length != bytes)
+                problems.Add(new(PacketProblemKind.Size, $"'{name}' changed size while being read"));
+            else if (!string.Equals(hash, sha256, StringComparison.Ordinal))
+                problems.Add(new(PacketProblemKind.Hash, $"'{name}' SHA-256 differs from the manifest"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            problems.Add(new(PacketProblemKind.MissingFile, $"'{item.File}' cannot be read: {ex.Message}"));
+            problems.Add(new(PacketProblemKind.MissingFile, $"'{name}' cannot be read: {ex.Message}"));
         }
+    }
+
+    /// <summary>Decrypts an encrypted item and checks its plaintext. Returns false when no protector was available.</summary>
+    private static bool CheckPlaintext(FileInfo file, PacketItem item, IPayloadProtector? protector, List<PacketProblem> problems)
+    {
+        if (protector is null) return false;
+        try
+        {
+            if (file.Length > PacketFormat.MaxStoredItemBytes) return true; // already reported as a size problem
+            byte[] plaintext = protector.Unprotect(File.ReadAllBytes(file.FullName));
+            if (plaintext.LongLength != item.Bytes)
+                problems.Add(new(PacketProblemKind.Protection, $"'{item.StoredFile}' decrypts to {plaintext.LongLength} bytes, manifest says {item.Bytes}"));
+            else if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(plaintext)), item.Sha256, StringComparison.Ordinal))
+                problems.Add(new(PacketProblemKind.Protection, $"'{item.StoredFile}' decrypts to plaintext whose SHA-256 differs from the manifest"));
+        }
+        catch (CryptographicException)
+        {
+            problems.Add(new(PacketProblemKind.Protection, $"'{item.StoredFile}' cannot be decrypted with {item.Stored!.Protection}"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            problems.Add(new(PacketProblemKind.MissingFile, $"'{item.StoredFile}' cannot be read: {ex.Message}"));
+        }
+        return true;
     }
 
     /// <summary>Checks a parsed manifest against the schema and the file-name rules.</summary>
@@ -203,6 +246,7 @@ public static class PacketValidator
             Schema("created must be a UTC ISO 8601 timestamp ending in 'Z'");
 
         var fileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (root.TryGetProperty("items", out var items))
         {
             if (items.ValueKind != JsonValueKind.Array) Schema("items must be an array");
@@ -213,7 +257,7 @@ public static class PacketValidator
                 long total = 0;
                 int index = 0;
                 foreach (var item in items.EnumerateArray())
-                    total += CheckItem(item, index++, fileNames, problems);
+                    total += CheckItem(item, index++, fileNames, allNames, problems);
                 if (total > PacketFormat.MaxPacketBytes)
                     problems.Add(new(PacketProblemKind.Size, $"items total {total} bytes, more than {PacketFormat.MaxPacketBytes}"));
             }
@@ -235,11 +279,11 @@ public static class PacketValidator
         return problems;
     }
 
-    private static long CheckItem(JsonElement item, int index, HashSet<string> fileNames, List<PacketProblem> problems)
+    private static long CheckItem(JsonElement item, int index, HashSet<string> fileNames, HashSet<string> allNames, List<PacketProblem> problems)
     {
         string at = $"items[{index}]";
         void Schema(string message) => problems.Add(new(PacketProblemKind.Schema, message));
-        if (!CheckObject(item, at, ItemKeys, ItemKeys, Schema)) return 0;
+        if (!CheckObject(item, at, ItemKeys, ItemRequired, Schema)) return 0;
 
         PacketItemKind? kind = null;
         var kindElement = item.GetProperty("kind");
@@ -253,7 +297,7 @@ public static class PacketValidator
             string name = file.GetString()!;
             string? reason = PacketNames.CheckItemFileName(name);
             if (reason is not null) problems.Add(new(PacketProblemKind.FileName, $"{at}.file: {reason}"));
-            else if (!fileNames.Add(name)) problems.Add(new(PacketProblemKind.FileName, $"{at}.file: '{name}' is listed more than once (names are compared ignoring case)"));
+            else if (!fileNames.Add(name) | !allNames.Add(name)) problems.Add(new(PacketProblemKind.FileName, $"{at}.file: '{name}' is listed more than once (names are compared ignoring case)"));
         }
 
         var media = item.GetProperty("media_type");
@@ -274,7 +318,40 @@ public static class PacketValidator
         var sha = item.GetProperty("sha256");
         if (sha.ValueKind != JsonValueKind.String || !IsLowerHex(sha.GetString()!, 64))
             Schema($"{at}.sha256 must be 64 lower-case hexadecimal characters");
+
+        if (item.TryGetProperty("stored", out var stored))
+            CheckStored(stored, $"{at}.stored", file.ValueKind == JsonValueKind.String ? file.GetString() : null, allNames, problems);
         return bytes;
+    }
+
+    private static void CheckStored(JsonElement stored, string at, string? plaintextName, HashSet<string> allNames, List<PacketProblem> problems)
+    {
+        void Schema(string message) => problems.Add(new(PacketProblemKind.Schema, message));
+        if (!CheckObject(stored, at, StoredKeys, StoredKeys, Schema)) return;
+        var protection = stored.GetProperty("protection");
+        string? protectionName = protection.ValueKind == JsonValueKind.String ? protection.GetString() : null;
+        if (!PacketNames.IsValidToken(protectionName)) Schema($"{at}.protection must be a lower-case token such as {PacketFormat.DpapiCurrentUser}");
+
+        var file = stored.GetProperty("file");
+        if (file.ValueKind != JsonValueKind.String) Schema($"{at}.file must be a string");
+        else
+        {
+            string name = file.GetString()!;
+            string? reason = PacketNames.CheckItemFileName(name);
+            if (reason is not null) problems.Add(new(PacketProblemKind.FileName, $"{at}.file: {reason}"));
+            else if (!allNames.Add(name)) problems.Add(new(PacketProblemKind.FileName, $"{at}.file: '{name}' is listed more than once (names are compared ignoring case)"));
+            else if (protectionName == PacketFormat.DpapiCurrentUser && plaintextName is not null &&
+                     name != plaintextName + "." + PacketFormat.DpapiExtension)
+                Schema($"{at}.file must be the item's file name followed by .{PacketFormat.DpapiExtension}");
+        }
+
+        if (!TryGetInteger(stored.GetProperty("bytes"), out long bytes) || bytes < 0)
+            Schema($"{at}.bytes must be a non-negative integer");
+        else if (bytes > PacketFormat.MaxStoredItemBytes)
+            problems.Add(new(PacketProblemKind.Size, $"{at}.bytes is larger than {PacketFormat.MaxStoredItemBytes}"));
+        var sha = stored.GetProperty("sha256");
+        if (sha.ValueKind != JsonValueKind.String || !IsLowerHex(sha.GetString()!, 64))
+            Schema($"{at}.sha256 must be 64 lower-case hexadecimal characters");
     }
 
     private static void CheckSource(JsonElement source, Action<string> schema)

@@ -15,6 +15,12 @@ public static class PacketFormat
 
     public const int MaxItems = 32;
     public const long MaxPacketBytes = 64L * 1024 * 1024;
+    /// <summary>Largest stored (encrypted) form of one item: the plaintext limit plus room for the protector's overhead.</summary>
+    public const long MaxStoredItemBytes = MaxPacketBytes + 1024 * 1024;
+    /// <summary>The <c>protection</c> of an item encrypted with Windows DPAPI for the current user.</summary>
+    public const string DpapiCurrentUser = "dpapi-current-user";
+    /// <summary>File extension of DPAPI-protected items: <c>capture.png</c> is stored as <c>capture.png.dpapi</c>.</summary>
+    public const string DpapiExtension = "dpapi";
     public const int MaxManifestBytes = 1024 * 1024;
     public const int MaxAckBytes = 64 * 1024;
     public const int MaxFileNameLength = 100;
@@ -62,8 +68,27 @@ public sealed record PacketItem
     public required string File { get; init; }
     public required string MediaType { get; init; }
     public required long Bytes { get; init; }
-    /// <summary>Lower-case hexadecimal SHA-256 of the file.</summary>
+    /// <summary>Lower-case hexadecimal SHA-256 of the plaintext.</summary>
     public required string Sha256 { get; init; }
+    /// <summary>
+    /// Present when the item is stored encrypted: the file in the folder is then <see cref="PacketStoredForm.File"/>,
+    /// and <see cref="File"/>, <see cref="Bytes"/> and <see cref="Sha256"/> describe the plaintext.
+    /// </summary>
+    public PacketStoredForm? Stored { get; init; }
+
+    /// <summary>The name of the file in the packet folder: the stored form if there is one.</summary>
+    [JsonIgnore]
+    public string StoredFile => Stored?.File ?? File;
+}
+
+/// <summary>How an encrypted item is stored: the file in the folder, its size and SHA-256, and the protection used.</summary>
+public sealed record PacketStoredForm
+{
+    public required string File { get; init; }
+    public required long Bytes { get; init; }
+    public required string Sha256 { get; init; }
+    /// <summary>For example <c>dpapi-current-user</c>.</summary>
+    public required string Protection { get; init; }
 }
 
 /// <summary>Where the content came from. Every field is optional and may be switched off.</summary>

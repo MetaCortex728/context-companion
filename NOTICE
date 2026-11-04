@@ -5,13 +5,22 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components
 ======================
 
-The shipped programs (ContextCompanion.Core, ContextCompanion.App and the
-`ccomp` tool) use only the .NET 10 runtime and the Windows Desktop runtime
-(WPF, and Windows Forms for the tray icon), both MIT licensed by the .NET
-Foundation and Microsoft. They take no other package dependencies.
+The shipped programs (ContextCompanion.Core, ContextCompanion.App,
+ContextCompanion.Platform.Windows and the `ccomp` tool) use the .NET 10
+runtime and the Windows Desktop runtime (WPF, and Windows Forms for the tray
+icon), both MIT licensed by the .NET Foundation and Microsoft, and one package:
 
-The test project (tests/ContextCompanion.Core.Tests) uses the following
-packages at build and test time only; none of them is shipped:
+DPAPI (ContextCompanion.Platform.Windows, and the Windows build of `ccomp`):
+  System.Security.Cryptography.ProtectedData 10.0.0
+  Copyright (c) .NET Foundation and Contributors
+  Licence: MIT
+  https://github.com/dotnet/runtime
+
+ContextCompanion.Core takes no package dependencies.
+
+The test projects (tests/ContextCompanion.Core.Tests and
+tests/ContextCompanion.Platform.Windows.Tests) use the following packages at
+build and test time only; none of them is shipped:
 
 Test framework: xUnit.net v2
   xunit 2.9.3, xunit.core, xunit.assert, xunit.abstractions 2.0.3,

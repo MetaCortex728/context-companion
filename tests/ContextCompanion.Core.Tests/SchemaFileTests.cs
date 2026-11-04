@@ -33,7 +33,11 @@ public class SchemaFileTests
         Assert.Equal(PacketValidator.ManifestKeys, Keys(schema.GetProperty("properties")));
         Assert.Equal(PacketValidator.ManifestRequired, Required(schema));
         Assert.Equal(PacketValidator.ItemKeys, Keys(defs.GetProperty("item").GetProperty("properties")));
-        Assert.Equal(PacketValidator.ItemKeys, Required(defs.GetProperty("item")));
+        Assert.Equal(PacketValidator.ItemRequired, Required(defs.GetProperty("item")));
+        var stored = defs.GetProperty("item").GetProperty("properties").GetProperty("stored");
+        Assert.Equal(PacketValidator.StoredKeys, Keys(stored.GetProperty("properties")));
+        Assert.Equal(PacketValidator.StoredKeys, Required(stored));
+        Assert.Equal(PacketFormat.MaxStoredItemBytes, stored.GetProperty("properties").GetProperty("bytes").GetProperty("maximum").GetInt64());
         Assert.Equal(PacketValidator.SourceKeys, Keys(defs.GetProperty("source").GetProperty("properties")));
         Assert.Equal(PacketValidator.RegionKeys, Keys(defs.GetProperty("source").GetProperty("properties").GetProperty("region").GetProperty("properties")));
         Assert.Equal(PacketValidator.RedactionKeys, Keys(defs.GetProperty("redaction").GetProperty("properties")));

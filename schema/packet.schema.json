@@ -64,7 +64,19 @@
           "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]{0,62}/[a-z0-9][a-z0-9!#$&^_.+-]{0,62}$"
         },
         "bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "sha256": { "description": "SHA-256 of the plaintext.", "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "stored": {
+          "description": "Present when the item is stored encrypted. The file in the folder is stored.file; bytes and sha256 above describe the plaintext, stored.bytes and stored.sha256 the encrypted file. For protection dpapi-current-user, stored.file is the item's file name followed by .dpapi.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "bytes", "sha256", "protection"],
+          "properties": {
+            "file": { "$ref": "#/$defs/fileName" },
+            "bytes": { "type": "integer", "minimum": 0, "maximum": 68157440 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "protection": { "$ref": "#/$defs/token" }
+          }
+        }
       },
       "allOf": [
         {

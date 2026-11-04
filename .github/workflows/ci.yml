@@ -41,3 +41,8 @@ jobs:
 
       - name: Test (Core)
         run: dotnet test tests/ContextCompanion.Core.Tests/ContextCompanion.Core.Tests.csproj --configuration Release --no-build --verbosity normal
+
+      # DPAPI round trip, encrypted delivery and `ccomp open`. On Linux these tests are reported as skipped
+      # with their reason; on windows-latest they run.
+      - name: Test (Windows platform)
+        run: dotnet test tests/ContextCompanion.Platform.Windows.Tests/ContextCompanion.Platform.Windows.Tests.csproj --configuration Release --no-build --verbosity normal ${{ matrix.build_args }}

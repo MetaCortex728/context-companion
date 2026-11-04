@@ -46,11 +46,16 @@ public sealed class PrivacyPipeline
     private readonly Outbox outbox;
     private readonly Denylist denylist;
     private readonly SecretRedactor? redactor;
+    private readonly IPayloadProtector? protector;
     private readonly IImageEncoder encoder;
     private readonly TimeProvider? time;
     private readonly UlidGenerator? ids;
 
-    public PrivacyPipeline(PrivacySettings settings, Outbox outbox, string destination,
+    /// <summary>
+    /// Creates the pipeline. When encryption is enabled in <paramref name="settings"/>, <paramref name="protector"/> must
+    /// provide the configured protection; otherwise the pipeline refuses to start rather than store plaintext.
+    /// </summary>
+    public PrivacyPipeline(PrivacySettings settings, Outbox outbox, string destination, IPayloadProtector? protector = null,
         IImageEncoder? encoder = null, TimeProvider? time = null, UlidGenerator? ids = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -60,6 +65,13 @@ public sealed class PrivacyPipeline
         Settings = settings;
         denylist = Denylist.Compile(settings.Denylist);
         redactor = settings.Redaction.Secrets ? SecretRedactor.FromSettings(settings.Redaction) : null;
+        if (settings.Encryption.Enabled)
+        {
+            if (protector is null || protector.Protection != settings.Encryption.Protection)
+                throw new InvalidOperationException(
+                    $"Encryption at rest is enabled with {settings.Encryption.Protection}, which is not available here; nothing will be captured until it is.");
+            this.protector = protector;
+        }
         this.outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
         Destination = destination;
         this.encoder = encoder ?? new PngEncoder();
@@ -118,6 +130,9 @@ public sealed class PrivacyPipeline
         builder.WithSource(source);
         foreach (var redaction in redactions) builder.AddRedaction(redaction);
         var draft = builder.Build();
+
+        // 5. Optional encryption.
+        if (protector is not null) draft = PacketProtection.Protect(draft, protector);
 
         // 6. Outbox.
         var queued = outbox.Enqueue(draft, Destination);

@@ -14,6 +14,8 @@ public class PlatformNeutralityTests
             name.StartsWith("PresentationFramework", StringComparison.Ordinal) ||
             name.StartsWith("PresentationCore", StringComparison.Ordinal) ||
             name.StartsWith("WindowsBase", StringComparison.Ordinal) ||
-            name.StartsWith("Microsoft.Win32", StringComparison.Ordinal));
+            name.StartsWith("Microsoft.Win32", StringComparison.Ordinal) ||
+            name.StartsWith("System.Security.Cryptography.ProtectedData", StringComparison.Ordinal) ||
+            name.StartsWith("ContextCompanion.Platform", StringComparison.Ordinal));
     }
 }

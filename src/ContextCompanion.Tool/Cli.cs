@@ -1,6 +1,9 @@
 using ContextCompanion.Core.Delivery;
 using ContextCompanion.Core.Packets;
 using ContextCompanion.Core.Privacy;
+#if WINDOWS
+using ContextCompanion.Platform.Windows;
+#endif
 
 namespace ContextCompanion.Tool;
 
@@ -8,6 +11,17 @@ namespace ContextCompanion.Tool;
 public sealed class CliEnvironment
 {
     public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>Decryptors available to <c>open</c> and <c>validate</c>: DPAPI in the Windows build on Windows, none elsewhere.</summary>
+    public IReadOnlyList<IPayloadProtector> Protectors { get; init; } = DefaultProtectors();
+
+    private static IReadOnlyList<IPayloadProtector> DefaultProtectors()
+    {
+#if WINDOWS
+        if (OperatingSystem.IsWindows()) return [new DpapiCurrentUserProtector()];
+#endif
+        return [];
+    }
 }
 
 /// <summary>
@@ -26,6 +40,10 @@ public static class Cli
           ccomp ack <packet> --consumer <name> [--note <text>]
               Write ack.json into a valid packet to record that <name> consumed it.
               An acknowledgement means taken, not read or answered.
+          ccomp open <packet> --to <dir>
+              Write a plaintext copy of a packet to <dir>/<id>/, decrypting encrypted items
+              and verifying every plaintext size and SHA-256. DPAPI-encrypted packets can be
+              opened only on Windows, by the user account that created them.
           ccomp purge <inbox> [--all | --older-than <duration> | --id <id>] [--yes]
                 [--outbox <dir>] [--audit <log>] [--settings <privacy.json>]
               Remove packets from an inbox. Without a selector, apply the retention limits
@@ -46,7 +64,8 @@ public static class Cli
             return args[0] switch
             {
                 "-h" or "--help" or "help" => PrintHelp(output),
-                "validate" => Validate(args[1..], output, error),
+                "validate" => Validate(args[1..], output, error, environment),
+                "open" => Open(args[1..], output, error, environment),
                 "ack" => Ack(args[1..], output, error),
                 "purge" => Purge(args[1..], output, error, environment),
                 _ => UsageError(error, $"unknown command '{args[0]}'"),
@@ -67,14 +86,14 @@ public static class Cli
         return Usage;
     }
 
-    private static int Validate(string[] args, TextWriter output, TextWriter error)
+    private static int Validate(string[] args, TextWriter output, TextWriter error, CliEnvironment environment)
     {
         if (args.Length != 1 || args[0].StartsWith('-')) return UsageError(error, "validate takes exactly one path");
         string path = Path.GetFullPath(args[0]);
         if (!Directory.Exists(path)) { error.WriteLine($"ccomp: '{args[0]}' is not a folder."); return Failed; }
 
         if (PacketReader.IsPacketDirectory(path))
-            return Report(PacketValidator.ValidateDirectory(path), Path.GetFileName(path), output) ? Ok : Failed;
+            return Report(PacketValidator.ValidateDirectory(path, environment.Protectors), Path.GetFileName(path), output) ? Ok : Failed;
 
         int checkedCount = 0, invalid = 0;
         foreach (var entry in new DirectoryInfo(path).EnumerateFileSystemInfos().OrderBy(e => e.Name, StringComparer.Ordinal))
@@ -86,7 +105,7 @@ public static class Cli
                 continue;
             }
             checkedCount++;
-            if (!Report(PacketValidator.ValidateDirectory(entry.FullName), entry.Name, output)) invalid++;
+            if (!Report(PacketValidator.ValidateDirectory(entry.FullName, environment.Protectors), entry.Name, output)) invalid++;
         }
         output.WriteLine($"{checkedCount} packet{(checkedCount == 1 ? "" : "s")} checked, {invalid} invalid.");
         return invalid == 0 ? Ok : Failed;
@@ -97,7 +116,11 @@ public static class Cli
         if (result.IsValid && result.Manifest is { } manifest)
         {
             string ack = result.Acknowledgement is { } a ? $", acknowledged by {a.Consumer}" : "";
-            output.WriteLine($"OK      {manifest.Id}: {manifest.Items.Count} item{(manifest.Items.Count == 1 ? "" : "s")}, {manifest.TotalBytes} bytes{ack}");
+            int encrypted = manifest.Items.Count(i => i.Stored is not null);
+            string protection = encrypted == 0 ? ""
+                : result.PlaintextUnchecked > 0 ? $", {encrypted} encrypted (stored form checked; plaintext not checked here)"
+                : $", {encrypted} encrypted";
+            output.WriteLine($"OK      {manifest.Id}: {manifest.Items.Count} item{(manifest.Items.Count == 1 ? "" : "s")}, {manifest.TotalBytes} bytes{protection}{ack}");
             return true;
         }
         output.WriteLine($"INVALID {name}");
@@ -215,4 +238,59 @@ public static class Cli
     }
 
     private static string Plural(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
+
+    private static int Open(string[] args, TextWriter output, TextWriter error, CliEnvironment environment)
+    {
+        string? packet = null, target = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--to" when i + 1 < args.Length: target = args[++i]; break;
+                case var a when a.StartsWith('-'): return UsageError(error, $"unknown or incomplete option '{a}'");
+                case var a when packet is null: packet = a; break;
+                default: return UsageError(error, "open takes one packet folder");
+            }
+        }
+        if (packet is null) return UsageError(error, "open needs a packet folder");
+        if (target is null) return UsageError(error, "open needs --to <dir>");
+
+        var result = PacketValidator.ValidateDirectory(packet, environment.Protectors);
+        if (!result.IsValid || result.Manifest is null)
+        {
+            error.WriteLine("ccomp: not opened, the packet is invalid:");
+            foreach (var problem in result.Problems) error.WriteLine($"  - {problem.Kind}: {problem.Message}");
+            return Failed;
+        }
+        var manifest = result.Manifest;
+        PacketDraft plain;
+        try
+        {
+            plain = PacketProtection.Unprotect(new Packet(result.Directory, manifest, result.Acknowledgement), environment.Protectors);
+        }
+        catch (MissingProtectorException ex) when (ex.Protection == PacketFormat.DpapiCurrentUser && !OperatingSystem.IsWindows())
+        {
+            error.WriteLine($"ccomp: packet {manifest.Id} is encrypted with Windows DPAPI ({ex.Protection}). " +
+                "It can be decrypted only on Windows, by the user account that created it. Nothing was written.");
+            return Failed;
+        }
+        catch (MissingProtectorException ex)
+        {
+            string hint = ex.Protection == PacketFormat.DpapiCurrentUser ? " Use the Windows build of ccomp (net10.0-windows)." : "";
+            error.WriteLine($"ccomp: packet {manifest.Id} is encrypted with {ex.Protection}, which this build of ccomp cannot decrypt.{hint} Nothing was written.");
+            return Failed;
+        }
+        catch (InvalidPacketException ex)
+        {
+            error.WriteLine("ccomp: not opened:");
+            foreach (var problem in ex.Problems) error.WriteLine($"  - {problem.Kind}: {problem.Message}");
+            return Failed;
+        }
+
+        string written = new InboxWriter(target).Write(plain);
+        int encrypted = manifest.Items.Count(i => i.Stored is not null);
+        output.WriteLine($"Opened {manifest.Id} into {written}: {Plural(plain.Manifest.Items.Count, "item")}, {plain.TotalBytes} bytes, " +
+            $"{encrypted} decrypted, plaintext sizes and SHA-256 verified.");
+        return Ok;
+    }
 }

@@ -44,7 +44,7 @@ public sealed class InboxWriter
         try
         {
             foreach (var item in draft.Manifest.Items)
-                WriteDurably(Path.Combine(staging, item.File), draft.Contents[item.File]);
+                WriteDurably(Path.Combine(staging, item.StoredFile), draft.Contents[item.StoredFile]);
             // The manifest is written last, so a staged folder without one is plainly incomplete.
             WriteDurably(Path.Combine(staging, PacketFormat.ManifestFileName),
                 JsonSerializer.SerializeToUtf8Bytes(draft.Manifest, PacketJson.Options));
