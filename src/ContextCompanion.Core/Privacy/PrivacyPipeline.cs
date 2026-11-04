@@ -94,16 +94,7 @@ public sealed class PrivacyPipeline
 
         // 1. Denylist. A matching captured window is refused before any pixels or text are kept.
         var captured = request.Source;
-        if (denylist.Match(captured.ProcessName, captured.WindowClass, captured.WindowTitle) is { } rule)
-        {
-            outbox.Audit.RecordBlocked(rule);
-            return new CaptureResult
-            {
-                Status = CaptureStatus.Blocked,
-                Rule = rule,
-                Message = $"Capture refused: the window matches denylist rule '{rule}'. Nothing was kept.",
-            };
-        }
+        if (CheckDenylist(captured) is { } blocked) return blocked;
         var redactions = new List<PacketRedaction>();
         var image = request.Image?.Clone();
         if (image is not null) redactions.AddRange(BlackOutDenylistedWindows(image, captured.Region!.Value, request.VisibleWindows));
@@ -144,6 +135,25 @@ public sealed class PrivacyPipeline
             Message = queued.Queued
                 ? $"Packet {draft.Id} queued for {Destination}."
                 : $"Same content as packet {queued.Record.Id}; not queued again.",
+        };
+    }
+
+    /// <summary>
+    /// Step 1 on its own, for callers that check the target window before taking anything from it (capture calls this
+    /// before grabbing pixels or sending a copy keystroke). When the window matches a denylist rule, records
+    /// <c>blocked</c> with the rule name in the audit log and returns the refusal; otherwise returns null. Only the
+    /// process name, class and title are read, and none of them is written anywhere.
+    /// </summary>
+    public CaptureResult? CheckDenylist(CaptureSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (denylist.Match(source.ProcessName, source.WindowClass, source.WindowTitle) is not { } rule) return null;
+        outbox.Audit.RecordBlocked(rule);
+        return new CaptureResult
+        {
+            Status = CaptureStatus.Blocked,
+            Rule = rule,
+            Message = $"Capture refused: the window matches denylist rule '{rule}'. Nothing was kept.",
         };
     }
 
