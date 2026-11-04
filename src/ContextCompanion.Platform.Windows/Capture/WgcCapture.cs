@@ -27,6 +27,10 @@ internal sealed class WgcCapture : IDisposable
     private static readonly Guid DxgiInterfaceAccessIid = new("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1");
     private static readonly Guid CaptureItemInteropIid = new("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
 
+    private const int E_INVALIDARG = unchecked((int)0x80070057);
+    private const int WindowRetries = 10;
+    private static readonly TimeSpan WindowRetryDelay = TimeSpan.FromMilliseconds(100);
+
     private readonly ID3D11Device device;
     private readonly ID3D11DeviceContext context;
     private readonly IDirect3DDevice winrtDevice;
@@ -75,6 +79,15 @@ internal sealed class WgcCapture : IDisposable
             var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(interopPtr);
             Guid itemIid = GraphicsCaptureItemIid;
             int hr = forMonitor ? interop.CreateForMonitor(handle, ref itemIid, out IntPtr itemPtr) : interop.CreateForWindow(handle, ref itemIid, out itemPtr);
+            // CreateForWindow can return E_INVALIDARG for a valid window that was shown moments ago; it succeeds when
+            // retried shortly afterwards. Qt's window capture retries the same way (QTBUG-116025). Only a window
+            // that still exists and is visible is retried, so a closed or hidden window falls back to GDI at once.
+            for (int attempt = 1; !forMonitor && hr == E_INVALIDARG && attempt < WindowRetries
+                 && NativeMethods.IsWindow(handle) && NativeMethods.IsWindowVisible(handle); attempt++)
+            {
+                Thread.Sleep(WindowRetryDelay);
+                hr = interop.CreateForWindow(handle, ref itemIid, out itemPtr);
+            }
             if (hr < 0 || itemPtr == IntPtr.Zero)
                 throw new CaptureFailedException($"Windows.Graphics.Capture cannot capture this {(forMonitor ? "monitor" : "window")} (0x{hr:X8}).");
             try { return GraphicsCaptureItem.FromAbi(itemPtr); }
