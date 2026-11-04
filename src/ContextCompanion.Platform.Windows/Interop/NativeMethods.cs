@@ -113,6 +113,7 @@ internal static class NativeMethods
     public const uint CF_UNICODETEXT = 13;
     public const uint GMEM_MOVEABLE = 0x0002;
     public static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new(-4);
+    public static readonly IntPtr HWND_MESSAGE = new(-3);
 
     // user32: windows
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -179,6 +180,11 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SetClipboardData(uint format, IntPtr data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterClipboardFormatW", SetLastError = true)] public static extern uint RegisterClipboardFormat(string name);
     [DllImport("user32.dll")] public static extern IntPtr GetClipboardOwner();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClipboardFormatNameW")] public static extern int GetClipboardFormatName(uint format, char[] name, int maxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW", SetLastError = true)]
+    public static extern IntPtr CreateWindowEx(uint exStyle, string className, string? windowName, uint style, int x, int y, int width, int height,
+        IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool DestroyWindow(IntPtr hWnd);
     [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
     [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr GlobalLock(IntPtr memory);
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool GlobalUnlock(IntPtr memory);

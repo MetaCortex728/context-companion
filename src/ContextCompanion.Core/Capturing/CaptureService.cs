@@ -34,6 +34,8 @@ public sealed record CaptureOutcome
     public string? Mode { get; init; }
     public string? Rule { get; init; }
     public IReadOnlyList<PacketRedaction> Redactions { get; init; } = [];
+    /// <summary>For text captures: each source tried, in order, and what happened.</summary>
+    public IReadOnlyList<TextAttempt> TextAttempts { get; init; } = [];
     public required string Message { get; init; }
 }
 
@@ -47,12 +49,14 @@ public sealed class CaptureService
     private readonly PrivacyPipeline pipeline;
     private readonly IScreenCapturer? capturer;
     private readonly IWindowInventory windows;
+    private readonly TextAcquisition? text;
 
-    public CaptureService(PrivacyPipeline pipeline, IWindowInventory windows, IScreenCapturer? capturer = null)
+    public CaptureService(PrivacyPipeline pipeline, IWindowInventory windows, IScreenCapturer? capturer = null, TextAcquisition? text = null)
     {
         this.pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         this.windows = windows ?? throw new ArgumentNullException(nameof(windows));
         this.capturer = capturer;
+        this.text = text;
     }
 
     private CaptureSettings Settings => pipeline.Settings.Capture;
@@ -124,6 +128,34 @@ public sealed class CaptureService
                 Title = w.Title,
             }).ToArray(),
         }, mode);
+    }
+
+    /// <summary>
+    /// Captures text from the foreground window: the UI Automation selection, then (only when
+    /// <paramref name="includeClipboard"/>) the clipboard, then an explicit copy. Refused before any source is tried
+    /// when the window is denylisted.
+    /// </summary>
+    public async Task<CaptureOutcome> CaptureTextAsync(bool includeClipboard, CancellationToken cancellationToken = default)
+    {
+        var acquisition = text ?? throw new InvalidOperationException("No text sources are available.");
+        nint window = windows.ForegroundWindow();
+        var info = window == 0 ? null : windows.Describe(window);
+        var source = info is null ? new CaptureSource { CaptureMode = "text" } : SourceOf(info, "text");
+        if (pipeline.CheckDenylist(source) is { } blocked) return From(blocked, "text");
+
+        var result = await acquisition.AcquireAsync(new TextTarget(info?.ProcessName, info?.WindowClass, includeClipboard), cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Text is null)
+            return new CaptureOutcome
+            {
+                Status = CaptureOutcomeStatus.NoText,
+                Mode = "text",
+                TextAttempts = result.Attempts,
+                Message = "No text captured: " + string.Join("; ", result.Attempts.Select(a => $"{a.Source}: {a.Detail}")) + ".",
+            };
+
+        string mode = "text-" + result.Source;
+        return Process(new CaptureRequest { Text = result.Text, Source = source with { CaptureMode = mode } }, mode) with { TextAttempts = result.Attempts };
     }
 
     private CaptureOutcome Process(CaptureRequest request, string mode)
