@@ -29,6 +29,9 @@ public sealed class WindowsScreenCapturer(CaptureMethods methods = CaptureMethod
 {
     public const string Wgc = "wgc", Gdi = "gdi";
 
+    /// <summary>Whether Windows.Graphics.Capture can be used in this session (<c>GraphicsCaptureSession.IsSupported()</c>).</summary>
+    public static bool IsWgcSupported => WgcCapture.IsSupported;
+
     public CapturedFrame CaptureWindow(nint window, bool includeCursor)
     {
         if (!IsWindow(window)) throw new CaptureFailedException("The window no longer exists.");

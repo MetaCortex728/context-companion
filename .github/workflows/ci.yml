@@ -42,7 +42,9 @@ jobs:
       - name: Test (Core)
         run: dotnet test tests/ContextCompanion.Core.Tests/ContextCompanion.Core.Tests.csproj --configuration Release --no-build --verbosity normal
 
-      # DPAPI round trip, encrypted delivery and `ccomp open`. On Linux these tests are reported as skipped
-      # with their reason; on windows-latest they run.
+      # DPAPI, window and region capture (Windows.Graphics.Capture and GDI), window enumeration, UI Automation,
+      # the clipboard and `ccomp capture`. On Linux these tests are reported as skipped with their reason; on
+      # windows-latest they run, except those that report no interactive desktop or no Windows.Graphics.Capture
+      # support, which are skipped with that reason.
       - name: Test (Windows platform)
         run: dotnet test tests/ContextCompanion.Platform.Windows.Tests/ContextCompanion.Platform.Windows.Tests.csproj --configuration Release --no-build --verbosity normal ${{ matrix.build_args }}
