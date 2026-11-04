@@ -31,6 +31,32 @@ internal static class Desktop
             : "Windows.Graphics.Capture is not supported in this session: GraphicsCaptureSession.IsSupported() returned false.";
     }
 
+    private static readonly Lazy<string?> WindowItemRefusal = new(ProbeWindowItem);
+
+    /// <summary>
+    /// Why Windows.Graphics.Capture cannot capture windows here, or null. Some sessions accept monitor items but refuse
+    /// every window item with E_INVALIDARG: the windows-latest runner (Windows Server 2025) does so for the test
+    /// window. The app then falls back to GDI, which other tests cover. Only that exact refusal skips; any other
+    /// failure lets the test run and fail.
+    /// </summary>
+    public static string? WgcWindowUnavailable() => WgcUnavailable() ?? WindowItemRefusal.Value;
+
+    private static string? ProbeWindowItem()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) return null;
+        try
+        {
+            using var window = new TestWindow(toolWindow: false);
+            new WindowsScreenCapturer(CaptureMethods.WgcOnly).CaptureWindow(window.Handle, includeCursor: false);
+            return null;
+        }
+        catch (ContextCompanion.Core.Capturing.CaptureFailedException ex) when (ex.InnerException?.Message.Contains("(0x80070057)") == true)
+        {
+            return $"Windows.Graphics.Capture refuses window items in this session (CreateForWindow returned E_INVALIDARG for a visible top-level window) on {Environment.OSVersion.VersionString}; monitor capture and the GDI fallback are tested separately.";
+        }
+        catch (Exception) { return null; }
+    }
+
 #pragma warning disable SYSLIB1054
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr OpenInputDesktop(uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint access);
@@ -56,6 +82,15 @@ public sealed class WgcFactAttribute : FactAttribute
     public WgcFactAttribute()
     {
         if (Desktop.WgcUnavailable() is { } reason) Skip = reason;
+    }
+}
+
+/// <summary>A fact that needs Windows.Graphics.Capture window items; skipped with the reason where the session refuses them.</summary>
+public sealed class WgcWindowFactAttribute : FactAttribute
+{
+    public WgcWindowFactAttribute()
+    {
+        if (Desktop.WgcWindowUnavailable() is { } reason) Skip = reason;
     }
 }
 

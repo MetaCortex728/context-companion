@@ -45,6 +45,7 @@ jobs:
       # DPAPI, window and region capture (Windows.Graphics.Capture and GDI), window enumeration, UI Automation,
       # the clipboard and `ccomp capture`. On Linux these tests are reported as skipped with their reason; on
       # windows-latest they run, except those that report no interactive desktop or no Windows.Graphics.Capture
-      # support, which are skipped with that reason.
+      # support, which are skipped with that reason. Where Windows.Graphics.Capture refuses window items (the
+      # windows-latest runner returns E_INVALIDARG for them), the WGC window test is skipped with that reason too.
       - name: Test (Windows platform)
         run: dotnet test tests/ContextCompanion.Platform.Windows.Tests/ContextCompanion.Platform.Windows.Tests.csproj --configuration Release --no-build --verbosity normal ${{ matrix.build_args }}

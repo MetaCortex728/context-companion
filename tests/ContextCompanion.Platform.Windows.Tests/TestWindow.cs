@@ -36,7 +36,7 @@ internal sealed class TestWindow : IDisposable
     private uint threadId;
     private IntPtr box;
 
-    public TestWindow(bool withTextBox = false)
+    public TestWindow(bool withTextBox = false, bool toolWindow = true)
     {
         Displays.EnsurePerMonitorV2();
         Title = "ccomp-test-window-" + Guid.NewGuid().ToString("N");
@@ -48,7 +48,7 @@ internal sealed class TestWindow : IDisposable
             {
                 threadId = GetCurrentThreadId();
                 RegisterClasses();
-                Handle = CreateWindowEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, ClassPrefix + "Frame", Title, WS_POPUP | WS_VISIBLE,
+                Handle = CreateWindowEx(WS_EX_TOPMOST | (toolWindow ? WS_EX_TOOLWINDOW : 0), ClassPrefix + "Frame", Title, WS_POPUP | WS_VISIBLE,
                     120, 120, Width, Height, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
                 if (Handle == IntPtr.Zero) throw new InvalidOperationException($"CreateWindowEx failed ({Marshal.GetLastWin32Error()}).");
                 for (int i = 0; i < 4; i++)
