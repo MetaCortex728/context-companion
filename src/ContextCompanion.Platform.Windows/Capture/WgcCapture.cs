@@ -46,10 +46,15 @@ internal sealed class WgcCapture : IDisposable
 
     public WgcCapture()
     {
-        D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport, [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0], out ID3D11Device created, out ID3D11DeviceContext createdContext)
-            .CheckError();
-        device = created ?? throw new CaptureFailedException("No Direct3D 11 device is available.");
-        context = createdContext ?? throw new CaptureFailedException("No Direct3D 11 device context is available.");
+        FeatureLevel[] levels = [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0];
+        // A hardware device first; the WARP software rasteriser on machines without a usable GPU (virtual machines, CI).
+        var result = D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport, levels, out ID3D11Device created, out ID3D11DeviceContext createdContext);
+        if (result.Failure)
+            result = D3D11.D3D11CreateDevice(null, DriverType.Warp, DeviceCreationFlags.BgraSupport, levels, out created, out createdContext);
+        if (result.Failure || created is null || createdContext is null)
+            throw new CaptureFailedException($"No Direct3D 11 device is available (0x{result.Code:X8}).");
+        device = created;
+        context = createdContext;
         using var dxgiDevice = device.QueryInterface<IDXGIDevice>();
         Marshal.ThrowExceptionForHR(NativeMethods.CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out IntPtr inspectable));
         try { winrtDevice = MarshalInterface<IDirect3DDevice>.FromAbi(inspectable); }
