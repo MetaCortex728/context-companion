@@ -1,0 +1,262 @@
+{
+  "source": "OpenAI Codex local session records, read by the assistant (Domo) on 2026-11-04; cutoff 2026-10-29T19:30:00Z",
+  "session_files": [
+    {
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "file": "rollout-2026-10-23T13-53-36-01a1077b-d0e3-7311-8391-32aff5b94dd9_01a1671b-7899-7892-8cc6-5effcea661f3.jsonl",
+      "segment": "2026-10-23T04:53:36.034Z to 2026-10-29T10:17:37.222Z"
+    }
+  ],
+  "writes": [
+    {
+      "time": "2026-10-23T10:34:40.372Z",
+      "file": "TrayControls.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 1713,
+      "call": "call_0dfdc087df454132923b87b2cc6306f4",
+      "reconstructed": true,
+      "sha256": "0ef42d5a3dda270ce4bb56b8f6a68879cd780901fd8197d34d4058df277cbc08",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T10:34:40.372Z",
+      "file": "CompanionIcon.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 1713,
+      "call": "call_0dfdc087df454132923b87b2cc6306f4",
+      "reconstructed": true,
+      "sha256": "7ed19247ea48797a186bed2f0804118cb1547fcbd85d2621d3da03c4a6710485",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T10:35:38.128Z",
+      "file": "TrayControls.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 1727,
+      "call": "call_d0b0e1ec972c470683498f49513358c0",
+      "reconstructed": true,
+      "sha256": "0ef42d5a3dda270ce4bb56b8f6a68879cd780901fd8197d34d4058df277cbc08",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T10:35:38.128Z",
+      "file": "CompanionIcon.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 1727,
+      "call": "call_d0b0e1ec972c470683498f49513358c0",
+      "reconstructed": true,
+      "sha256": "7ed19247ea48797a186bed2f0804118cb1547fcbd85d2621d3da03c4a6710485",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T11:03:37.276Z",
+      "file": "Capture.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2400,
+      "call": "call_64dd6ff57f50403394ac00f64979a26b",
+      "reconstructed": true,
+      "sha256": "16ef50260cc977dea96ade5418abe9928a5864711c8c5b82689ae27acaf01484",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:04:54.130Z",
+      "file": "Capture.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2412,
+      "call": "call_d16d2ee9550a45eda537f49c5f0eaffc",
+      "reconstructed": true,
+      "sha256": "404f3eeee2c199b0dd51873d09939da75091c7f92d729e32067e5e80b45b8ed9",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T11:04:54.130Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2412,
+      "call": "call_d16d2ee9550a45eda537f49c5f0eaffc",
+      "reconstructed": true,
+      "sha256": "cc47a040125bade2d7d634a489a007abd2724a237736b5d59ede367d71505a0f",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:07:23.033Z",
+      "file": "CaptureChecks.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2437,
+      "call": "call_4db99048331e443c97b741ebb82678f9",
+      "reconstructed": true,
+      "sha256": "e834595e3f4a8b00e1fa8ccde92cb0b37f61eed296b18831b2c8e784833df920",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:24:12.605Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2879,
+      "call": "call_68de046292304521b27cc37025200ff1",
+      "reconstructed": true,
+      "sha256": "de8b15986d669319a77fedcaec3d23a6729b79ba16d1ffa3bc72dea3f13c0ae4",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:24:12.605Z",
+      "file": "CaptureChecks.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 2879,
+      "call": "call_68de046292304521b27cc37025200ff1",
+      "reconstructed": true,
+      "sha256": "b9a0136c27c6f3e46ab46b68f88ab9c6d3ec1e0b45bdb2d520ba4b882bdde0fc",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:52:04.522Z",
+      "file": "CaptureDeliveryQueue.cs",
+      "operation": "Add",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 3493,
+      "call": "call_98e30e1aae794683af67d1594ae6bcd0",
+      "reconstructed": true,
+      "sha256": "84a978427a24c27a22d2ab5960cea5871170183cc6fb873ec0e555b644fa614f",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T11:52:04.522Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 3493,
+      "call": "call_98e30e1aae794683af67d1594ae6bcd0",
+      "reconstructed": true,
+      "sha256": "c781dad4d906821e8bdd336b7e2b1f82050281735eafc4b394e3aadbd7961d51",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T13:08:30.921Z",
+      "file": "CaptureDeliveryQueue.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4177,
+      "call": "call_a20a1096509347d3929d6f8595e549b5",
+      "reconstructed": true,
+      "sha256": "995ad60ef6f84b73b308b43564f69536c23faf5780c7cdfbce5fb7709af8a2fd",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T13:09:11.548Z",
+      "file": "CaptureDeliveryQueue.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4190,
+      "call": "call_1a6ea6ec0e214820ab780231f49a772e",
+      "reconstructed": false,
+      "sha256": null,
+      "comparison": "content not recorded/replay incomplete"
+    },
+    {
+      "time": "2026-10-23T13:11:48.441Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4228,
+      "call": "call_0c7e13ef3727496585c9baf5869784a5",
+      "reconstructed": true,
+      "sha256": "29fe8618ee352256175b0babf08452ca7e45dd69b0b85139936f6bc852f11c37",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T13:11:48.441Z",
+      "file": "CaptureChecks.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4228,
+      "call": "call_0c7e13ef3727496585c9baf5869784a5",
+      "reconstructed": true,
+      "sha256": "c51d606c41fbfd9a46e05cb7bfdef0b2f6c0e45fb7fb29d00a1453672e8fc0aa",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T13:13:58.454Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4255,
+      "call": "call_9aa0cea3dbf94ff1a5be9edb29fb5171",
+      "reconstructed": true,
+      "sha256": "729884111a9293130cd56432a5a5cc608ee830817de5003d3d37e1c45b4cdd65",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T13:20:51.574Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4354,
+      "call": "call_78c2db32cabf4c80b0fa8dc58f0616bf",
+      "reconstructed": true,
+      "sha256": "c0e16aa1596662089a922cca69eb914f96e1c1f13ebf6ca3cd7f7cca1ba96f44",
+      "comparison": "no match"
+    },
+    {
+      "time": "2026-10-23T13:21:25.912Z",
+      "file": "CaptureOutbox.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4362,
+      "call": "call_5d1e9547d4f54d9cb49f35f34c376357",
+      "reconstructed": true,
+      "sha256": "1781d4933730fdb0a919a46e9626043492a8c083a540abc5beeaf3f5dd2bfa86",
+      "comparison": "match"
+    },
+    {
+      "time": "2026-10-23T13:21:25.912Z",
+      "file": "CaptureChecks.cs",
+      "operation": "Update",
+      "tool": "exec",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 4362,
+      "call": "call_5d1e9547d4f54d9cb49f35f34c376357",
+      "reconstructed": true,
+      "sha256": "1aff5e027920d43e1b2c77831b5c9f1b247e3a7b61a2b5df0bc036a582f71e7d",
+      "comparison": "match"
+    }
+  ],
+  "runs": [
+    {
+      "time": "2026-10-23T08:37:57.102Z",
+      "session": "01a1077b-d0e3-7311-8391-32aff5b94dd9",
+      "line": 731,
+      "outputLine": 734,
+      "outputTime": "2026-10-23T08:38:00.433Z",
+      "summary": "30 checks passed."
+    }
+  ]
+}

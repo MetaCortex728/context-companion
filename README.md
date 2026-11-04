@@ -2,16 +2,18 @@
 
 A lightweight Windows utility for handing your own context to AI tools. When you press a key or make a gesture, it captures exactly what you choose (a window, a screen region, selected text), packages it as a documented packet with hashes and source details, and delivers it to a local inbox folder that coding agents and other tools can read. It records nothing in the background, does no reasoning of its own and favours no AI vendor.
 
-Status: planning. See [ROADMAP.md](ROADMAP.md).
+Status: Stage 1 of the [roadmap](ROADMAP.md) is complete. The tray app captures a window, a region or selected text on a hotkey (or, if you switch it on, a tilt of the mouse wheel), shows a preview of exactly what will be sent, and delivers the packet to a local inbox with receipts. Every capture passes the privacy pipeline first. Measured on one desktop PC: under 0.2 % of one CPU core and 17 MB of private memory while idle, and about 0.2 s from hotkey to packet in the inbox. Stage 2 is next: an MCP server, audio clips, transcription, assistant destinations, window text and OCR.
 
 ## Layout
 
 - `src/ContextCompanion.Core`: platform-neutral library (`net10.0`, no Windows APIs).
-- `src/ContextCompanion.App`: the WPF tray app (`net10.0-windows`). For now a skeleton that shows a tray icon and exits from the tray menu.
-- `src/ContextCompanion.Platform.Windows`: Windows implementations of Core interfaces (`net10.0-windows`); for now DPAPI encryption at rest.
-- `src/ContextCompanion.Tool`: the `ccomp` command-line tool (`net10.0`, plus a `net10.0-windows` build that can decrypt DPAPI-encrypted packets).
+- `src/ContextCompanion.App`: the WPF tray app (`net10.0-windows10.0.19041.0`, Per-Monitor V2 DPI aware): tray icon and menu, hotkeys, the wheel gesture, the region selector, the preview and the deliveries window.
+- `src/ContextCompanion.Platform.Windows`: Windows implementations of Core interfaces (`net10.0-windows10.0.19041.0`, Windows 10 version 2004 or later): DPAPI encryption at rest, window and region capture (Windows.Graphics.Capture with a GDI fallback), window enumeration, text through UI Automation, the clipboard and an explicit copy, global hotkeys and the wheel-gesture hook.
+- `src/ContextCompanion.Tool`: the `ccomp` command-line tool (`net10.0`, plus a `net10.0-windows10.0.19041.0` build that can decrypt DPAPI-encrypted packets and capture).
 - `tests/ContextCompanion.Core.Tests`: xUnit tests for Core and `ccomp`, run on Linux and Windows.
-- `tests/ContextCompanion.Platform.Windows.Tests`: DPAPI tests; they run on Windows and are reported as skipped elsewhere.
+- `examples/consumer/read_packets.py`: a reference consumer in plain Python that checks and acknowledges packets.
+- `tools/measure.ps1`: the measurements below.
+- `tests/ContextCompanion.Platform.Windows.Tests`: DPAPI, capture, window enumeration, UI Automation, clipboard, hotkey and hook tests; they run on Windows with an interactive desktop and are reported as skipped, with the reason, elsewhere. The text tests take the foreground and use the clipboard, so leave the desktop alone while they run.
 
 ## Build and test
 
@@ -32,7 +34,7 @@ dotnet build ContextCompanion.sln -p:EnableWindowsTargeting=true
 dotnet test tests/ContextCompanion.Core.Tests
 ```
 
-Continuous integration (`.github/workflows/ci.yml`) does both: `ubuntu-latest` builds everything with Windows targeting enabled and runs the Core tests, and `windows-latest` does the same natively and also runs the DPAPI tests. .NET CLI telemetry is switched off in CI.
+Continuous integration (`.github/workflows/ci.yml`) does both: `ubuntu-latest` builds everything with Windows targeting enabled and runs the Core tests, and `windows-latest` does the same natively and also runs the Windows tests. .NET CLI telemetry is switched off in CI.
 
 ## Packets and `ccomp`
 
@@ -105,9 +107,85 @@ Removed 01M6HXXNGZJXM5SEVYEM9KBPK5: purge-id, 1457 bytes
 1 packet removed, 1457 bytes. Deleted files may still be recoverable from the disk or from backups; see PRIVACY.md.
 ```
 
+## Using the tray app
+
+Build it (`dotnet build src/ContextCompanion.App -c Release`) and run `ContextCompanion.exe` from `src/ContextCompanion.App/bin/Release/net10.0-windows10.0.19041.0/`. It needs Windows 10 version 2004 or later. Its icon stays in the notification area while it runs; a second copy refuses to start.
+
+| Trigger | Captures |
+| --- | --- |
+| `Ctrl+Alt+W` | The foreground window. |
+| `Ctrl+Alt+R` | A region: the screen dims, you drag a rectangle on one monitor, Esc or a right click cancels. |
+| `Ctrl+Alt+T` | The selected text of the focused application (UI Automation first, then a copy that restores your clipboard; never Ctrl+C in a terminal). |
+| Wheel tilt left / right (off by default) | The foreground window / a region around the pointer, as in the prototype. Switch it on in the tray menu or with `app.wheel_gesture`. |
+| Tray menu | The same three captures (window and text after 3 s, so you can click back into the window first), the preview and gesture switches, the deliveries window, and the inbox and settings folders. |
+
+With preview on (the default), each capture opens a window that shows what the packet will hold after the privacy rules: blacked-out windows, redacted text, the source details you left on. Add a note if you like and choose Send to inbox (Ctrl+Enter) or Discard (Esc). A notification then names the packet, its capture mode and how many redactions it has, never its content.
+
+"Deliveries..." (or a double click on the icon) lists every packet with its state, when it reached the inbox and which consumer acknowledged it.
+
+The app reads `%APPDATA%\context-companion\settings.json`, or the file given with `--settings <file>`. Without one the defaults apply: inbox `%USERPROFILE%\ContextCompanion\inbox`, preview on, gesture off, the hotkeys above. The `app` section changes them:
+
+```json
+{ "schema_version": 1,
+  "app": { "inbox": "D:\\agents\\inbox", "preview": true, "wheel_gesture": false,
+           "hotkeys": { "window": "Ctrl+Alt+W", "region": "Ctrl+Alt+R", "text": "Ctrl+Alt+T" } } }
+```
+
+At start, a notification reports any hotkey that another application already holds. Every setting is listed in [PRIVACY.md](PRIVACY.md#settings).
+
+## Reading packets
+
+Agents and scripts read the inbox folder directly. [docs/agents.md](docs/agents.md) describes the layout and gives instructions to paste into `CLAUDE.md`, `AGENTS.md` or similar files. [`examples/consumer/read_packets.py`](examples/consumer/read_packets.py) is plain Python. It lists the packets nobody has taken yet, checks every hash and prints each packet's files and text. With `--ack <name>` it also acknowledges them:
+
+```
+> python examples\consumer\read_packets.py %USERPROFILE%\ContextCompanion\inbox --ack claude-code
+OK 01M6JWVCC2J331XV24C22K4HYJ  2026-11-04T09:04:43.394Z  window-wgc  redactions: 1
+  image: C:\Users\me\ContextCompanion\inbox\01M6JWVCC2J331XV24C22K4HYJ\capture.png
+  note: C:\Users\me\ContextCompanion\inbox\01M6JWVCC2J331XV24C22K4HYJ\note.txt
+    | layout check; password=[REDACTED:connection-string]
+  acknowledged as claude-code
+```
+
+`ReferenceConsumerTests` runs it against packets written by Core and checks its `ack.json` with the C# validator.
+
+## Measurements
+
+Measured on 4 November 2026 with [`tools/measure.ps1`](tools/measure.ps1) on one PC: Release build, Windows 11, Intel Core i5-14500, one monitor at 100 %.
+
+| What | Result |
+| --- | --- |
+| Idle, hotkeys only, 60 s after a 15 s settle | 46.9 ms of CPU time (0.08 % of one core), working set 67 MB, private memory 17 MB, 15 threads |
+| Idle, hotkeys and the wheel-gesture hook | 109.4 ms of CPU time (0.18 % of one core), working set 66 MB, private memory 17 MB, 16 threads |
+| Window hotkey to packet in the inbox (1280×720 window, preview off, 10 runs) | median 228 ms, range 77 to 590 ms |
+| Text hotkey to packet in the inbox (explicit copy, preview off, 10 runs) | median 172 ms, range 158 to 202 ms |
+
+Latency is measured from the hotkey press to the moment the packet folder and its manifest exist in the inbox. It includes the capture, the privacy rules, PNG encoding, the outbox and delivery. The idle CPU with the hook includes ordinary mouse movement during that minute. These numbers come from one machine and are not a benchmark.
+
+## Capture from the command line
+
+The Windows build of `ccomp` runs the same captures from the command line, through the same privacy pipeline, outbox and inbox destination as the app:
+
+```
+ccomp capture window --foreground --inbox <dir> [--delay <seconds>]
+ccomp capture window --hwnd 0x1A2B3C --inbox <dir>
+ccomp capture region --rect <x,y,width,height> --inbox <dir>
+ccomp capture text [--clipboard] --inbox <dir> --delay 3
+```
+
+Each command also takes `--settings <file>` (privacy and capture settings) and `--outbox <dir>` (default `%LOCALAPPDATA%\context-companion\outbox`). `--delay` waits up to 60 seconds first, so you can focus another window. Rectangles are physical screen pixels. The command prints the packet id, the capture mode (for example `window-wgc` or `region-gdi`, the method that produced the pixels, or `text-selection`, `text-clipboard` or `text-copy`, the source the text came from), whether it was delivered, and the redaction counts, never content or titles. A refused capture (denylisted, minimised or protected window, no text) exits with 1 and says why; the audit log in the inbox records refusals by the denylist.
+
+Text comes from the UI Automation selection, then the clipboard (only with `--clipboard`), then a Ctrl+C that restores your clipboard afterwards. Ctrl+C is never sent to consoles and terminals. Methods, fallbacks, DPI, the visible capture border, minimised windows, multi-monitor regions, resizing and the clipboard rules are described in [docs/capture.md](docs/capture.md).
+
+`CaptureCliTests` runs these commands with stand-ins for the Windows parts, and a Windows test runs `ccomp capture window` against a real window on `windows-latest`. The `net10.0` build refuses; this is from Linux:
+
+```
+$ ccomp capture region --rect 0,0,10,10 --inbox /tmp/ccomp-x
+ccomp: capture works only on Windows, with the Windows build of ccomp. Nothing was captured.
+```
+
 ## Origin
 
-Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking.
+Han built the first version from 23 October 2026 for his own use, with OpenAI Codex as a coding assistant and without version control: a .NET WPF tray app that captured the foreground window or a cursor region on horizontal mouse-wheel gestures, kept a bounded outbox on disk and delivered captures to one Codex chat with receipt tracking. [docs/provenance.md](docs/provenance.md) lists the dated evidence: the recorded edits and checks of 23 October, file hashes, and how each prototype part carried over.
 
 `prototype/` keeps only the parts this project reuses, unchanged except as noted:
 

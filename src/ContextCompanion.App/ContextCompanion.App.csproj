@@ -3,7 +3,7 @@
   <!-- WPF tray app. Stage 1 part 1: a skeleton that shows a tray icon and exits from its menu. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- Only for System.Windows.Forms.NotifyIcon; WPF has no tray icon of its own. -->
     <UseWindowsForms>true</UseWindowsForms>
@@ -12,6 +12,11 @@
     <AssemblyName>ContextCompanion</AssemblyName>
     <RootNamespace>ContextCompanion.App</RootNamespace>
     <ApplicationIcon>Assets\companion.ico</ApplicationIcon>
+    <!-- Per-Monitor V2 DPI awareness: every rectangle is in physical pixels. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WFO0003 asks Windows Forms apps to set DPI awareness in code; this is a WPF app (Windows Forms only provides the
+         tray icon), and for WPF the manifest is the way to declare Per-Monitor V2 before any window exists. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ContextCompanion.Core\ContextCompanion.Core.csproj" />
+    <ProjectReference Include="..\ContextCompanion.Platform.Windows\ContextCompanion.Platform.Windows.csproj" />
   </ItemGroup>
 
 </Project>

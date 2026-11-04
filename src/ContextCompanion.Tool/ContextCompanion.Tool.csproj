@@ -3,10 +3,10 @@
   <!-- The `ccomp` command-line tool. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- net10.0 runs anywhere; the net10.0-windows build adds DPAPI decryption for `ccomp open`. The Windows build
-         is produced on Windows, or elsewhere with -p:EnableWindowsTargeting=true. -->
+    <!-- net10.0 runs anywhere; the Windows build (net10.0-windows10.0.19041.0) adds DPAPI decryption for `ccomp open`
+         and `ccomp capture`. It is produced on Windows, or elsewhere with -p:EnableWindowsTargeting=true. -->
     <TargetFrameworks>net10.0</TargetFrameworks>
-    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT' or '$(EnableWindowsTargeting)' == 'true'">net10.0;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT' or '$(EnableWindowsTargeting)' == 'true'">net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
     <AssemblyName>ccomp</AssemblyName>
     <RootNamespace>ContextCompanion.Tool</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -16,7 +16,7 @@
     <ProjectReference Include="..\ContextCompanion.Core\ContextCompanion.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
     <ProjectReference Include="..\ContextCompanion.Platform.Windows\ContextCompanion.Platform.Windows.csproj" />
   </ItemGroup>
 

@@ -32,6 +32,19 @@ public sealed record CaptureResult
 }
 
 /// <summary>
+/// A capture after the privacy rules have run and before it is packaged: what a preview shows and what is queued.
+/// The image already has denylisted windows blacked out, the text is redacted, and the source holds only enabled fields.
+/// </summary>
+public sealed record PreparedCapture(BgraImage? Image, string? Text, string? Note, PacketSource? Source, IReadOnlyList<PacketRedaction> Redactions);
+
+/// <summary>Either a prepared capture or the refusal that stopped it.</summary>
+public sealed record PrepareResult
+{
+    public PreparedCapture? Capture { get; init; }
+    public CaptureResult? Refusal { get; init; }
+}
+
+/// <summary>
 /// Turns a <see cref="CaptureRequest"/> into a packet in the outbox. The order is fixed:
 /// denylist (refuse, or black out windows inside a region), then the metadata filter, then text redaction,
 /// then the packet, then optional encryption, then the outbox. Nothing reaches a packet before these rules
@@ -89,21 +102,23 @@ public sealed class PrivacyPipeline
     /// </summary>
     public CaptureResult Process(CaptureRequest request)
     {
+        var prepared = Prepare(request);
+        return prepared.Refusal ?? Queue(prepared.Capture!);
+    }
+
+    /// <summary>
+    /// Steps 1 to 3 (denylist and blackout, metadata filter, text redaction) without packaging or queueing anything, so
+    /// a preview can show exactly what would be sent. Returns the refusal instead when the window is denylisted or all
+    /// text was withheld. Nothing is written to disk except a <c>blocked</c> audit entry.
+    /// </summary>
+    public PrepareResult Prepare(CaptureRequest request)
+    {
         ArgumentNullException.ThrowIfNull(request);
         CheckShape(request);
 
         // 1. Denylist. A matching captured window is refused before any pixels or text are kept.
         var captured = request.Source;
-        if (denylist.Match(captured.ProcessName, captured.WindowClass, captured.WindowTitle) is { } rule)
-        {
-            outbox.Audit.RecordBlocked(rule);
-            return new CaptureResult
-            {
-                Status = CaptureStatus.Blocked,
-                Rule = rule,
-                Message = $"Capture refused: the window matches denylist rule '{rule}'. Nothing was kept.",
-            };
-        }
+        if (CheckDenylist(captured) is { } blocked) return new PrepareResult { Refusal = blocked };
         var redactions = new List<PacketRedaction>();
         var image = request.Image?.Clone();
         if (image is not null) redactions.AddRange(BlackOutDenylistedWindows(image, captured.Region!.Value, request.VisibleWindows));
@@ -115,11 +130,41 @@ public sealed class PrivacyPipeline
         string? text = RedactSecrets(request.Text, TextFileName, redactions);
         string? note = RedactSecrets(request.Note, NoteFileName, redactions);
         if (image is null && text is null && note is null)
+            return new PrepareResult
+            {
+                Refusal = new CaptureResult
+                {
+                    Status = CaptureStatus.Withheld,
+                    Redactions = redactions,
+                    Message = "Nothing was queued: the text was withheld because the secret scan did not finish in time.",
+                },
+            };
+        return new PrepareResult { Capture = new PreparedCapture(image, text, note, source, redactions) };
+    }
+
+    /// <summary>
+    /// Steps 4 to 6 for a capture from <see cref="Prepare"/>: packet, optional encryption, outbox. A note added here
+    /// (for example in a preview) goes through the same secret redaction and replaces any note already prepared.
+    /// </summary>
+    public CaptureResult Queue(PreparedCapture prepared, string? addedNote = null)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        var redactions = prepared.Redactions.ToList();
+        var image = prepared.Image;
+        var text = prepared.Text;
+        var source = prepared.Source;
+        string? note = prepared.Note;
+        if (!string.IsNullOrWhiteSpace(addedNote))
+        {
+            redactions.RemoveAll(r => r.Item == NoteFileName || (r.Kind == "withheld" && r.Reason?.Contains("note", StringComparison.Ordinal) == true));
+            note = RedactSecrets(addedNote, NoteFileName, redactions);
+        }
+        if (image is null && text is null && note is null)
             return new CaptureResult
             {
                 Status = CaptureStatus.Withheld,
                 Redactions = redactions,
-                Message = "Nothing was queued: the text was withheld because the secret scan did not finish in time.",
+                Message = "Nothing was queued: the note was withheld because the secret scan did not finish in time.",
             };
 
         // 4. Packet.
@@ -144,6 +189,25 @@ public sealed class PrivacyPipeline
             Message = queued.Queued
                 ? $"Packet {draft.Id} queued for {Destination}."
                 : $"Same content as packet {queued.Record.Id}; not queued again.",
+        };
+    }
+
+    /// <summary>
+    /// Step 1 on its own, for callers that check the target window before taking anything from it (capture calls this
+    /// before grabbing pixels or sending a copy keystroke). When the window matches a denylist rule, records
+    /// <c>blocked</c> with the rule name in the audit log and returns the refusal; otherwise returns null. Only the
+    /// process name, class and title are read, and none of them is written anywhere.
+    /// </summary>
+    public CaptureResult? CheckDenylist(CaptureSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (denylist.Match(source.ProcessName, source.WindowClass, source.WindowTitle) is not { } rule) return null;
+        outbox.Audit.RecordBlocked(rule);
+        return new CaptureResult
+        {
+            Status = CaptureStatus.Blocked,
+            Rule = rule,
+            Message = $"Capture refused: the window matches denylist rule '{rule}'. Nothing was kept.",
         };
     }
 

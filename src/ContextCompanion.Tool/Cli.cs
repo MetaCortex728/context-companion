@@ -1,8 +1,12 @@
+using System.Globalization;
+using ContextCompanion.Core.Capturing;
 using ContextCompanion.Core.Delivery;
 using ContextCompanion.Core.Packets;
 using ContextCompanion.Core.Privacy;
 #if WINDOWS
 using ContextCompanion.Platform.Windows;
+using ContextCompanion.Platform.Windows.Capture;
+using ContextCompanion.Platform.Windows.Text;
 #endif
 
 namespace ContextCompanion.Tool;
@@ -22,6 +26,44 @@ public sealed class CliEnvironment
 #endif
         return [];
     }
+
+    /// <summary>
+    /// What <c>ccomp capture</c> captures with: the Windows implementations in the Windows build on Windows 10 2004 or
+    /// later, nothing elsewhere (the command then refuses). Tests supply fakes.
+    /// </summary>
+    public CaptureBackend? Capture { get; init; } = DefaultCapture();
+
+    /// <summary>Where <c>ccomp capture</c> keeps its outbox when <c>--outbox</c> is not given.</summary>
+    public string DefaultOutbox { get; init; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "context-companion", "outbox");
+
+    /// <summary>Waits before a capture (<c>--delay</c>); tests replace it.</summary>
+    public Action<TimeSpan> Sleep { get; init; } = Thread.Sleep;
+
+    private static CaptureBackend? DefaultCapture()
+    {
+#if WINDOWS
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+            return new CaptureBackend
+            {
+                Prepare = () => Displays.EnsurePerMonitorV2(),
+                Windows = new WindowsWindowInventory(),
+                Screen = new WindowsScreenCapturer(),
+                Text = settings => TextAcquisition.Create(new UiaSelectionReader(), new WindowsClipboard(), new WindowsKeyboard(), settings),
+            };
+#endif
+        return null;
+    }
+}
+
+/// <summary>The platform pieces <c>ccomp capture</c> needs.</summary>
+public sealed class CaptureBackend
+{
+    /// <summary>Runs before any window is touched; on Windows it makes the process Per-Monitor V2 DPI aware.</summary>
+    public Func<bool> Prepare { get; init; } = () => true;
+    public required IWindowInventory Windows { get; init; }
+    public required IScreenCapturer Screen { get; init; }
+    public required Func<CaptureSettings, TextAcquisition> Text { get; init; }
 }
 
 /// <summary>
@@ -57,6 +99,20 @@ public static class Cli
               A folder means its audit.jsonl (outbox) or .audit.jsonl (inbox). --since takes
               a UTC time such as 2026-11-03T15:00:00Z, a date, or a duration such as 2h.
               The log holds ids, states, hashes, sizes and rule or reason names; never content.
+          ccomp capture window (--foreground | --hwnd <hex>) [capture options]
+          ccomp capture region --rect <x,y,w,h> [capture options]
+          ccomp capture text [--clipboard] [capture options]
+              Capture a window, a screen rectangle (physical pixels) or text and deliver it as a
+              packet through the privacy pipeline, the outbox and the inbox. Text comes from the
+              UI Automation selection, then the clipboard (only with --clipboard), then an
+              explicit Ctrl+C that restores the clipboard (never in terminals).
+              Capture options:
+                --inbox <dir>        inbox to deliver to (required)
+                --settings <file>    settings file (privacy and capture settings)
+                --outbox <dir>       outbox folder (default: %LOCALAPPDATA%\context-companion\outbox)
+                --delay <seconds>    wait first, to focus another window (0 to 60, default 0)
+              Prints the packet id, capture mode and redaction counts; never content or titles.
+              Needs the Windows build of ccomp on Windows 10 2004 or later.
           ccomp --help
         """;
 
@@ -74,6 +130,7 @@ public static class Cli
                 "ack" => Ack(args[1..], output, error),
                 "purge" => Purge(args[1..], output, error, environment),
                 "audit" => Audit(args[1..], output, error, environment),
+                "capture" => Capture(args[1..], output, error, environment),
                 _ => UsageError(error, $"unknown command '{args[0]}'"),
             };
         }
@@ -362,6 +419,124 @@ public static class Cli
         }
         if (skipped > 0) error.WriteLine($"ccomp: {Plural(skipped, "line")} of the log skipped: not valid audit entries.");
         return Ok;
+    }
+
+    private static int Capture(string[] args, TextWriter output, TextWriter error, CliEnvironment environment)
+    {
+        if (args.Length == 0 || args[0] is not ("window" or "region" or "text"))
+            return UsageError(error, "capture takes window, region or text");
+        string kind = args[0];
+        string? inbox = null, settingsPath = null, outboxPath = null;
+        bool foreground = false, clipboard = false;
+        nint? hwnd = null;
+        ScreenRect? rect = null;
+        double delay = 0;
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--inbox" when i + 1 < args.Length: inbox = args[++i]; break;
+                case "--settings" when i + 1 < args.Length: settingsPath = args[++i]; break;
+                case "--outbox" when i + 1 < args.Length: outboxPath = args[++i]; break;
+                case "--delay" when i + 1 < args.Length:
+                    if (!double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out delay) || !(delay >= 0 && delay <= 60))
+                        return UsageError(error, "--delay takes a number of seconds from 0 to 60");
+                    break;
+                case "--foreground" when kind == "window": foreground = true; break;
+                case "--hwnd" when kind == "window" && i + 1 < args.Length:
+                    hwnd = ParseHandle(args[++i]);
+                    if (hwnd is null) return UsageError(error, "--hwnd takes a window handle in hexadecimal, such as 0x1A2B3C");
+                    break;
+                case "--rect" when kind == "region" && i + 1 < args.Length:
+                    rect = ParseRect(args[++i]);
+                    if (rect is null) return UsageError(error, "--rect takes x,y,width,height in physical pixels, such as 0,0,800,600");
+                    break;
+                case "--clipboard" when kind == "text": clipboard = true; break;
+                default: return UsageError(error, $"unknown or incomplete option '{args[i]}' for capture {kind}");
+            }
+        }
+        if (kind == "window" && foreground == (hwnd is not null)) return UsageError(error, "capture window needs either --foreground or --hwnd <hex>");
+        if (kind == "region" && rect is null) return UsageError(error, "capture region needs --rect <x,y,w,h>");
+        if (inbox is null) return UsageError(error, "capture needs --inbox <dir>");
+
+        if (environment.Capture is not { } backend)
+        {
+            error.WriteLine(OperatingSystem.IsWindows()
+                ? "ccomp: capture needs the Windows build of ccomp (net10.0-windows10.0.19041.0) on Windows 10 version 2004 or later. Nothing was captured."
+                : "ccomp: capture works only on Windows, with the Windows build of ccomp. Nothing was captured.");
+            return Failed;
+        }
+
+        PrivacySettings settings;
+        try
+        {
+            if (settingsPath is not null && !File.Exists(settingsPath)) { error.WriteLine($"ccomp: settings file '{settingsPath}' not found."); return Failed; }
+            settings = settingsPath is null ? PrivacySettings.Default : PrivacySettings.Parse(File.ReadAllBytes(settingsPath));
+        }
+        catch (PrivacySettingsException ex) { error.WriteLine($"ccomp: {ex.Message}"); return Failed; }
+
+        string inboxRoot = Path.GetFullPath(inbox);
+        var audit = new AuditLog(InboxRetention.DefaultAuditPath(inboxRoot), environment.Time);
+        var outbox = new Outbox(outboxPath ?? environment.DefaultOutbox, audit: audit, time: environment.Time);
+        var destination = new InboxDestination(inboxRoot, retention: settings.Retention.ToLimits(), audit: audit, time: environment.Time);
+        PrivacyPipeline pipeline;
+        try
+        {
+            var protector = environment.Protectors.FirstOrDefault(p => p.Protection == settings.Encryption.Protection);
+            pipeline = new PrivacyPipeline(settings, outbox, destination.Name, protector, time: environment.Time);
+        }
+        catch (InvalidOperationException ex) { error.WriteLine($"ccomp: {ex.Message}"); return Failed; }
+
+        if (!backend.Prepare()) error.WriteLine("ccomp: warning: the process is not Per-Monitor V2 DPI aware; rectangles may be scaled.");
+        if (delay > 0) environment.Sleep(TimeSpan.FromSeconds(delay));
+
+        var service = new CaptureService(pipeline, backend.Windows, backend.Screen, backend.Text(settings.Capture));
+        CaptureOutcome outcome;
+        try
+        {
+            outcome = kind switch
+            {
+                "window" => foreground ? service.CaptureForegroundWindow() : service.CaptureWindow(hwnd!.Value),
+                "region" => service.CaptureRegion(rect!.Value),
+                _ => service.CaptureTextAsync(clipboard).GetAwaiter().GetResult(),
+            };
+        }
+        catch (OutboxFullException ex) { error.WriteLine($"ccomp: {ex.Message}"); return Failed; }
+
+        foreach (var attempt in outcome.TextAttempts)
+            output.WriteLine($"  text source {attempt.Source}: {attempt.Result.ToString().ToLowerInvariant()}, {attempt.Detail}");
+        if (outcome.Status is not (CaptureOutcomeStatus.Queued or CaptureOutcomeStatus.Duplicate))
+        {
+            error.WriteLine($"ccomp: {outcome.Message}");
+            return Failed;
+        }
+
+        using (var queue = new DeliveryQueue(outbox, [destination], time: environment.Time))
+            queue.DeliverQueuedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var record = outbox.Find(outcome.PacketId!);
+        string state = record?.State.ToString().ToLowerInvariant() ?? "delivered";
+        output.WriteLine($"Packet {outcome.PacketId}: mode {outcome.Mode}, {(outcome.Status == CaptureOutcomeStatus.Duplicate ? "duplicate of an earlier packet, not queued again" : state)}.");
+        output.WriteLine("Redactions: " + (outcome.Redactions.Count == 0 ? "none"
+            : string.Join(", ", outcome.Redactions.Select(r => $"{r.Kind} {r.Rule ?? r.Pattern ?? "-"} x{r.Count ?? 1}"))) + ".");
+        if (record is { State: DeliveryState.Delivered or DeliveryState.Consumed })
+            output.WriteLine($"Delivered to {Path.Combine(inboxRoot, outcome.PacketId!)}");
+        return record is null or { State: DeliveryState.Delivered or DeliveryState.Consumed } ? Ok : Failed;
+    }
+
+    private static nint? ParseHandle(string text)
+    {
+        string digits = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? text[2..] : text;
+        return long.TryParse(digits, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out long value) && value > 0 ? (nint)value : null;
+    }
+
+    private static ScreenRect? ParseRect(string text)
+    {
+        var parts = text.Split(',');
+        if (parts.Length != 4) return null;
+        var numbers = new int[4];
+        for (int i = 0; i < 4; i++)
+            if (!int.TryParse(parts[i].Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out numbers[i])) return null;
+        return numbers[2] > 0 && numbers[3] > 0 ? new ScreenRect(numbers[0], numbers[1], numbers[2], numbers[3]) : null;
     }
 
     private static DateTimeOffset? ParseSince(string text, DateTimeOffset now)

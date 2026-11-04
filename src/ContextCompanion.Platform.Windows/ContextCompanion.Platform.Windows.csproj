@@ -1,14 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Windows-only implementations of Core interfaces. No WPF or Windows Forms. -->
+  <!-- Windows-only implementations of Core interfaces. No WPF or Windows Forms. The Windows 10 SDK version
+       (10.0.19041, Windows 10 2004) provides Windows.Graphics.Capture with cursor control. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>ContextCompanion.Platform.Windows</RootNamespace>
   </PropertyGroup>
 
   <!-- DPAPI: System.Security.Cryptography.ProtectedData (MIT, .NET Foundation). See NOTICE. -->
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <!-- Direct3D 11 interop for Windows.Graphics.Capture frames: Vortice.Direct3D11 (MIT). See NOTICE. -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
 
   <ItemGroup>
