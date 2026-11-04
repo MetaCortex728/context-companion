@@ -52,6 +52,11 @@ public static class Cli
               as queued or delivering are never removed. Each removal is written to the audit
               log (default <inbox>/.audit.jsonl) as the packet id and a reason.
               Deleting files does not guarantee the bytes are unrecoverable.
+          ccomp audit <inbox-or-log> [--since <time>] [--packet <id>] [--json]
+              Show an audit log as a table: time, packet, destination, state change, reason.
+              A folder means its audit.jsonl (outbox) or .audit.jsonl (inbox). --since takes
+              a UTC time such as 2026-11-03T15:00:00Z, a date, or a duration such as 2h.
+              The log holds ids, states, hashes, sizes and rule or reason names; never content.
           ccomp --help
         """;
 
@@ -68,6 +73,7 @@ public static class Cli
                 "open" => Open(args[1..], output, error, environment),
                 "ack" => Ack(args[1..], output, error),
                 "purge" => Purge(args[1..], output, error, environment),
+                "audit" => Audit(args[1..], output, error, environment),
                 _ => UsageError(error, $"unknown command '{args[0]}'"),
             };
         }
@@ -292,5 +298,78 @@ public static class Cli
         output.WriteLine($"Opened {manifest.Id} into {written}: {Plural(plain.Manifest.Items.Count, "item")}, {plain.TotalBytes} bytes, " +
             $"{encrypted} decrypted, plaintext sizes and SHA-256 verified.");
         return Ok;
+    }
+
+    private static int Audit(string[] args, TextWriter output, TextWriter error, CliEnvironment environment)
+    {
+        string? path = null, packet = null;
+        DateTimeOffset? since = null;
+        bool json = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--json": json = true; break;
+                case "--packet" when i + 1 < args.Length:
+                    packet = args[++i];
+                    if (!Ulid.IsValid(packet)) return UsageError(error, "--packet takes a packet id (a canonical ULID)");
+                    break;
+                case "--since" when i + 1 < args.Length:
+                    since = ParseSince(args[++i], environment.Time.GetUtcNow());
+                    if (since is null) return UsageError(error, "--since takes a UTC time such as 2026-11-03T15:00:00Z, a date such as 2026-11-03, or a duration such as 2h");
+                    break;
+                case var a when a.StartsWith('-'): return UsageError(error, $"unknown or incomplete option '{a}'");
+                case var a when path is null: path = a; break;
+                default: return UsageError(error, "audit takes one inbox, outbox or log file");
+            }
+        }
+        if (path is null) return UsageError(error, "audit needs an inbox, an outbox or a log file");
+
+        string? log = File.Exists(path) ? path
+            : Directory.Exists(path) ? new[] { Outbox.AuditFileName, InboxRetention.AuditFileName }.Select(n => Path.Combine(path, n)).FirstOrDefault(File.Exists)
+            : null;
+        if (log is null)
+        {
+            error.WriteLine(Directory.Exists(path)
+                ? $"ccomp: '{path}' holds no audit log ({Outbox.AuditFileName} or {InboxRetention.AuditFileName})."
+                : $"ccomp: '{path}' does not exist.");
+            return Failed;
+        }
+
+        var entries = AuditLog.Read(log, out int skipped)
+            .Where(e => since is null || e.Time >= since)
+            .Where(e => packet is null || e.Packet == packet)
+            .ToArray();
+        if (json)
+        {
+            foreach (var entry in entries) output.WriteLine(System.Text.Json.JsonSerializer.Serialize(entry, PacketJson.Compact));
+        }
+        else
+        {
+            string[] header = ["TIME", "PACKET", "DESTINATION", "CHANGE", "REASON"];
+            var rows = entries.Select(e => new[]
+            {
+                PacketJson.FormatTimestamp(e.Time),
+                e.Packet ?? "-",
+                e.Destination ?? "-",
+                $"{e.From ?? "-"} -> {e.To}",
+                e.Reason ?? (e.Rule is not null ? $"denylist rule {e.Rule}" : e.Consumer is not null ? $"consumer {e.Consumer}" : ""),
+            }).ToList();
+            int[] widths = header.Select((h, c) => rows.Select(r => r[c].Length).Prepend(h.Length).Max()).ToArray();
+            foreach (var row in rows.Prepend(header))
+                output.WriteLine(string.Join("  ", row.Select((cell, c) => c == row.Length - 1 ? cell : cell.PadRight(widths[c]))).TrimEnd());
+            output.WriteLine(entries.Length == 1 ? "1 entry." : $"{entries.Length} entries.");
+        }
+        if (skipped > 0) error.WriteLine($"ccomp: {Plural(skipped, "line")} of the log skipped: not valid audit entries.");
+        return Ok;
+    }
+
+    private static DateTimeOffset? ParseSince(string text, DateTimeOffset now)
+    {
+        if (PacketJson.TryParseTimestamp(text, out var time)) return time;
+        if (DateTimeOffset.TryParseExact(text, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var date))
+            return date;
+        return Duration.TryParse(text, out var ago) ? now - ago : null;
     }
 }

@@ -116,18 +116,28 @@ public sealed class AuditLog
     }
 
     /// <summary>Reads all complete entries. A line cut short by a crash is skipped.</summary>
-    public static IReadOnlyList<AuditEntry> Read(string path)
+    public static IReadOnlyList<AuditEntry> Read(string path) => Read(path, out _);
+
+    /// <summary>
+    /// Reads all complete entries; <paramref name="skipped"/> counts non-empty lines that are not valid entries (for
+    /// example a line cut short by a crash, or one with properties an entry cannot have).
+    /// </summary>
+    public static IReadOnlyList<AuditEntry> Read(string path, out int skipped)
     {
+        skipped = 0;
         if (!File.Exists(path)) return [];
         var entries = new List<AuditEntry>();
-        foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        while (reader.ReadLine() is { } line)
         {
             if (line.Length == 0) continue;
             try
             {
                 if (JsonSerializer.Deserialize<AuditEntry>(line, PacketJson.Compact) is { } entry) entries.Add(entry);
+                else skipped++;
             }
-            catch (JsonException) { }
+            catch (JsonException) { skipped++; }
         }
         return entries;
     }
