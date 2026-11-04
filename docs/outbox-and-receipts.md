@@ -43,11 +43,11 @@ failed      → queued     (explicit retry by the user)
 - **Consumed** is reached only by reading a valid `ack.json` through the destination, for the same packet id, with a plausible time.
 - **Discard** removes a failed or uncertain packet and its stored copy; the audit log keeps its history.
 
-A destination implements `IDestination`: it delivers a stored packet and reports `Delivered`, `NotDelivered`, `Unavailable` or `Uncertain`, and reads acknowledgements. Any exception or cancellation during an attempt is recorded as `uncertain`. `InboxDestination` writes the packet into a local inbox with the atomic writer and reports `Delivered` only once the packet is visible and valid. `DeliveryQueue` delivers queued packets one at a time, in order, with pause and resume, and retries an unavailable destination after a delay (3 seconds by default).
+A destination implements `IDestination`: it delivers a stored packet and reports `Delivered`, `NotDelivered`, `Unavailable` or `Uncertain`, and reads acknowledgements. Any exception or cancellation during an attempt is recorded as `uncertain`. `InboxDestination` writes the packet into a local inbox with the atomic writer and reports `Delivered` only once the packet is visible and valid. `DeliveryQueue` delivers queued packets one at a time, in order, with pause and resume, and retries an unavailable destination after a delay (3 seconds by default). After each successful delivery to a destination with retention limits (`InboxDestination` given `RetentionLimits`), it applies them; see [PRIVACY.md](../PRIVACY.md#retention-and-purge).
 
 ## Audit log
 
-`audit.jsonl` has one JSON object per line, one line per state change, flushed to disk as it is written and never rewritten:
+`audit.jsonl` has one JSON object per line, one line per state change, refused capture or removal, flushed to disk as it is written and never rewritten. `ccomp audit` prints it as a table (see [PRIVACY.md](../PRIVACY.md#audit-log)):
 
 ```json
 {"time":"2026-11-03T15:04:05.133Z","packet":"01JBQ7Y2H5V0X8Z3T6M4N9P1RS","destination":"inbox","from":"delivered","to":"consumed","content_sha256":"…","item_sha256":["…","…"],"bytes":48231,"consumer":"example-agent"}
@@ -56,11 +56,13 @@ A destination implements `IDestination`: it delivers a stored packet and reports
 | Field | Meaning |
 | --- | --- |
 | `time` | When the change happened, UTC. |
-| `packet` | Packet id. |
-| `destination` | Destination name. |
-| `from` | Previous state; absent when the packet entered the outbox. |
-| `to` | New state, or `discarded`. |
-| `content_sha256`, `item_sha256`, `bytes` | The packet's content hash, item hashes and total size. |
+| `packet` | Packet id; absent for a refused capture. |
+| `destination` | Destination name; absent for a refused capture, and for a removal by `ccomp purge`. |
+| `from` | Previous state; absent when the packet entered the outbox, and for `blocked` and `removed`. |
+| `to` | New state; or `discarded` (removed from the outbox), `blocked` (capture refused by a denylist rule) or `removed` (deleted from an inbox by retention or `ccomp purge`). |
+| `content_sha256`, `item_sha256`, `bytes` | The packet's content hash, item hashes and total size, for state changes. |
 | `consumer` | For `consumed` only: the consumer name from `ack.json`, a restricted identifier. |
+| `rule` | For `blocked` only: the denylist rule's name. |
+| `reason` | For `removed` only: `retention-max-age`, `retention-max-packets`, `retention-max-bytes`, `purge-all`, `purge-older-than` or `purge-id`. |
 
-The audit log never contains payload content, window titles, process names, regions, redaction reasons, acknowledgement notes or any other text from a packet. Neither does `outbox.json`. The stored copies in `packets/` do contain the payload until delivery.
+The audit log never contains payload content, window titles, process names, executable paths, regions, redaction reasons, acknowledgement notes or any other text from a capture or a packet. Neither does `outbox.json`. The stored copies in `packets/` do contain the payload until delivery.

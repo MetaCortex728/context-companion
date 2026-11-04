@@ -56,7 +56,7 @@ UTF-8 JSON, at most 1 MiB, no comments, no trailing commas, no duplicate propert
     "scale": 1.5
   },
   "redactions": [
-    { "kind": "secret", "reason": "Token-like string removed", "item": "selection.txt", "count": 1 }
+    { "kind": "secret", "reason": "Secret-like text replaced with [REDACTED:github-token]", "item": "selection.txt", "pattern": "github-token", "count": 1 }
   ]
 }
 ```
@@ -79,7 +79,37 @@ UTF-8 JSON, at most 1 MiB, no comments, no trailing commas, no duplicate propert
 | `file` | A plain file name inside the packet folder, **never a path**. See [file names](#file-names). |
 | `media_type` | Lower-case media type without parameters, for example `image/png`, `text/plain`, `audio/wav`. Must match the kind: `image/*` for images, `audio/*` for audio, `text/*` for text and notes. Text is UTF-8. |
 | `bytes` | Exact file size. At most 64 MiB per item and 64 MiB for the whole packet. |
-| `sha256` | SHA-256 of the file, 64 lower-case hexadecimal characters. |
+| `sha256` | SHA-256 of the file, 64 lower-case hexadecimal characters. For an encrypted item, of the plaintext. |
+| `stored` | Optional. Present only when the item is stored encrypted; see [Encrypted items](#encrypted-items). |
+
+### Encrypted items
+
+When encryption at rest is enabled (see [PRIVACY.md](../PRIVACY.md#encryption-at-rest)), each payload file is stored encrypted and the folder holds the encrypted file instead of the plaintext. `file`, `bytes` and `sha256` still describe the plaintext, and `stored` describes the file actually in the folder:
+
+```json
+{
+  "kind": "text",
+  "file": "selection.txt",
+  "media_type": "text/plain",
+  "bytes": 18,
+  "sha256": "e61ba3ef17eaa1043d653803740745f956fd8208b993577849f49a1c45355744",
+  "stored": {
+    "file": "selection.txt.dpapi",
+    "bytes": 248,
+    "sha256": "…SHA-256 of selection.txt.dpapi…",
+    "protection": "dpapi-current-user"
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `stored.file` | The file in the packet folder. Follows the [file-name rules](#file-names) and is unique among all names in the packet, ignoring case. For `dpapi-current-user` it is `file` followed by `.dpapi`. |
+| `stored.bytes` | Exact size of the stored file, at most 64 MiB + 1 MiB. |
+| `stored.sha256` | SHA-256 of the stored file. |
+| `stored.protection` | How it was encrypted, a lower-case token. `dpapi-current-user`: Windows DPAPI, current-user scope, no additional entropy; only that Windows user account can decrypt it. |
+
+A reader that cannot decrypt can still check the stored files' sizes and hashes. `ccomp open <packet> --to <dir>` writes a plaintext copy (a normal packet without `stored`) after checking every plaintext size and hash.
 
 ### Source
 
@@ -103,9 +133,11 @@ Each entry records **what kind of thing was removed and why, never the removed c
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `kind` | yes | Lower-case token, for example `secret` or `denylisted-window`. |
+| `kind` | yes | Lower-case token. context-companion writes `blackout` (a denylisted window filled with black), `secret` (secret-shaped text replaced) and `withheld` (a text item left out because the secret scan did not finish in time). |
 | `reason` | yes | Short human-readable reason written by the tool, 1–500 characters. |
 | `item` | no | The file name of the item it applies to; must be listed in `items`. |
+| `rule` | no | For `blackout`: the denylist rule's name, 1–64 characters from `A–Z`, `a–z`, `0–9`, `.`, `_`, `-`. |
+| `pattern` | no | For `secret` and `withheld`: the redaction pattern's name, a lower-case token. |
 | `count` | no | Number of separate removals, at least 1. |
 
 ### File names
@@ -163,14 +195,15 @@ Rules for writers of `ack.json`:
 | `Manifest` | The folder and `manifest.json` exist, are not links, the manifest is at most 1 MiB and is well-formed JSON without duplicate properties. |
 | `Schema` | The manifest follows `schema/packet.schema.json`: required and unknown properties, `format`, `schema_version`, ULID `id`, UTC `created`, item fields, media type matching the kind, source and redaction fields. |
 | `FileName` | Every item file name follows the [file-name rules](#file-names); no two are equal ignoring case. |
-| `MissingFile` | Every listed file exists. |
+| `MissingFile` | Every listed file exists (for an encrypted item, its `stored.file`). |
 | `ExtraFile` | The folder holds nothing else: no unlisted files, no subfolders, no symbolic links or other reparse points. `manifest.json` and `ack.json` are the only additions allowed. |
-| `Size` | Each file's size equals `bytes`; no item and no packet exceeds 64 MiB. |
-| `Hash` | Each file's SHA-256 equals `sha256`. |
+| `Size` | Each file's size equals `bytes` (for an encrypted item, `stored.bytes`); no item and no packet exceeds 64 MiB of plaintext. |
+| `Hash` | Each file's SHA-256 equals `sha256` (for an encrypted item, `stored.sha256`). |
+| `Protection` | Only when the validator can decrypt: an encrypted item decrypts, and its plaintext size and SHA-256 equal `bytes` and `sha256`. |
 | `Identity` | The folder name equals `id`. |
 | `Acknowledgement` | If `ack.json` exists it follows `schema/ack.schema.json`, is at most 64 KiB and names this packet's id. |
 
-`ccomp validate` prints packet ids, file names and problems only, never payload content or source details such as window titles. Its exit code is 0 when everything checked is valid and 1 otherwise.
+`ccomp validate` prints packet ids, file names and problems only, never payload content or source details such as window titles. For encrypted items it reports whether the plaintext could be checked here. Its exit code is 0 when everything checked is valid and 1 otherwise.
 
 ## Notes for consumers
 
@@ -182,5 +215,5 @@ Rules for writers of `ack.json`:
 ## What this format does not guarantee
 
 - Hashes detect accidental change and tampering after writing, but packets are not signed: anyone who can write to the inbox can write a well-formed packet.
-- Packets are not encrypted in v1. Encryption at rest is planned (see [ROADMAP.md](../ROADMAP.md)).
+- Packets are encrypted only when encryption at rest is enabled, and DPAPI current-user encryption does not protect against software running as the same user (see [PRIVACY.md](../PRIVACY.md#honest-limits)).
 - An acknowledgement is written by the consumer and is only as trustworthy as that consumer.
