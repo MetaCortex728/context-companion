@@ -121,7 +121,7 @@ Every field is optional and each can be switched off by the user, so readers mus
 | `window_class` | Window class name of the captured window. 1–256 characters. Off by default. |
 | `window_title` | Title of the captured window. Up to 1024 characters. Off by default. |
 | `executable_path` | Full path of the captured application's executable. 1–32767 characters. Off by default. |
-| `capture_mode` | How it was captured: a lower-case token such as `window`, `region` or `text`. |
+| `capture_mode` | How it was captured: a lower-case token such as `window`, `region` or `text`. context-companion writes `window-wgc`, `window-gdi`, `region-wgc`, `region-gdi`, `text-selection`, `text-clipboard` or `text-copy` (what was captured, then the method or text source; see [capture.md](capture.md)). |
 | `region` | The captured rectangle in physical screen pixels: integers `x`, `y` (may be negative on multi-monitor set-ups), `width`, `height` (at least 1). |
 | `scale` | Display scale factor at capture time, greater than 0 and at most 16 (1.5 = 150 %). |
 

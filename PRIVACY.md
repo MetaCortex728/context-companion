@@ -2,17 +2,19 @@
 
 context-companion hands context you choose to AI tools. Privacy here means that what you capture, and the people who appear in it, go nowhere you did not intend. It never means hiding the tool: context-companion does not hide its windows or itself from screen capture or from other people (see [ROADMAP.md](ROADMAP.md), *No concealment*).
 
-This document describes what is implemented in `ContextCompanion.Core`, `ContextCompanion.Platform.Windows` and `ccomp` today. Screen capture and text capture, the next steps on the roadmap, are not built yet; they will hand their results to the privacy pipeline described here, so that nothing reaches a packet before these rules have run.
+This document describes what is implemented in `ContextCompanion.Core`, `ContextCompanion.Platform.Windows` and `ccomp` today. Window, region and text capture (run with `ccomp capture` until the tray app gets its triggers) hand their results to the privacy pipeline described here, so nothing reaches a packet before these rules have run. How capture itself works, including the clipboard rules for text, is in [docs/capture.md](docs/capture.md).
 
 ## What is captured, and when
 
-Only when you trigger a capture. There are no timers, no background recording and no audio.
+Only when you trigger a capture. There are no timers, no background recording and no audio. Each trigger takes one frame of one window or region, or one piece of text. While Windows.Graphics.Capture takes the frame, Windows shows its capture border; context-companion never turns it off.
+
+Before anything is taken, the target window is checked against the denylist: a denylisted window is refused before any pixels are grabbed and before a copy keystroke could reach it. Minimised windows and windows an application protects from capture are refused too.
 
 One trigger produces one **capture request**: optionally the pixels of a window or screen region, optionally text (for example the selection), optionally a note you wrote, and source details reported by the operating system (process name, window class, window title, executable path, capture mode, region, display scale), plus the rectangles, process names and classes of the windows visible inside the region. The request exists only in memory.
 
 The **privacy pipeline** (`PrivacyPipeline`) turns it into a packet, always in this order:
 
-1. **Denylist.** If the captured window matches a denylist rule, the capture is refused before any pixels or text are kept. Otherwise every denylisted window inside the region is filled with opaque black.
+1. **Denylist.** If the captured window matches a denylist rule, the capture is refused before any pixels or text are kept. Otherwise every denylisted window inside the region is filled with opaque black. For a region, the captured window is the topmost window at its centre.
 2. **Metadata filter.** Source fields that are switched off are dropped. From here on they do not exist: they never appear in a manifest, the audit log or a message.
 3. **Text redaction.** Secret-shaped text in the captured text and the note is replaced with `[REDACTED:<pattern>]`.
 4. **Packet.** The packet is built: PNG image, text files, manifest with hashes, the enabled source fields and a record of every redaction.
@@ -31,7 +33,8 @@ The pipeline works on a copy of the pixels; it never changes the caller's buffer
 | Inbox folder: `<id>/` | Delivered packets: `manifest.json`, payload files, and `ack.json` once a consumer acknowledged it. |
 | Inbox folder: `.audit.jsonl` | The inbox's audit log (removals by retention and `ccomp purge`). The app can share one log between outbox and inbox. |
 | Inbox folder: `.tmp/` | Staging for atomic writes and removals. Never a packet. |
-| Settings file (JSON) | The privacy settings below. Read with `PrivacySettings.LoadOrDefault`; without a file the defaults apply. |
+| Settings file (JSON) | The privacy settings below and the capture settings ([docs/capture.md](docs/capture.md#settings)). Read with `PrivacySettings.LoadOrDefault`; without a file the defaults apply. |
+| `ccomp capture` outbox: `%LOCALAPPDATA%\context-companion\outbox` | The outbox `ccomp capture` uses unless given `--outbox`. Its audit entries go to the inbox's `.audit.jsonl`. |
 
 Everything stays on the local disk. There is no network code and no telemetry.
 
@@ -54,7 +57,8 @@ The settings are a JSON file with snake_case names. Unknown properties are rejec
   "denylist": [ "… the default list below …" ],
   "redaction": { "secrets": true, "disabled_patterns": [], "extra_patterns": [] },
   "retention": { "max_packets": 200, "max_bytes": 536870912, "max_age": "7d" },
-  "encryption": { "enabled": false, "protection": "dpapi-current-user" }
+  "encryption": { "enabled": false, "protection": "dpapi-current-user" },
+  "capture": { "max_long_edge": 1568, "include_cursor": false, "explicit_copy": true, "copy_timeout_ms": 500, "extra_terminal_window_classes": [] }
 }
 ```
 
@@ -64,7 +68,7 @@ The settings are a JSON file with snake_case names. Unknown properties are rejec
 | `metadata.window_class` | off | Writes the window class name. |
 | `metadata.window_title` | off | Writes the window title. Titles often name documents, people and conversations. |
 | `metadata.executable_path` | off | Writes the full executable path. Paths often contain your user name. |
-| `metadata.capture_mode` | on | Writes `window`, `region` or `text`. |
+| `metadata.capture_mode` | on | Writes how it was captured: `window-wgc`, `window-gdi`, `region-wgc`, `region-gdi`, `text-selection`, `text-clipboard` or `text-copy`. |
 | `metadata.region` | on | Writes the captured rectangle in screen pixels. |
 | `metadata.scale` | on | Writes the display scale factor. |
 | `denylist` | default list | Rules for windows that are never captured. Leaving it out keeps the default list; `[]` switches it off. |
@@ -76,6 +80,7 @@ The settings are a JSON file with snake_case names. Unknown properties are rejec
 | `retention.max_age` | `7d` | Oldest packet an inbox keeps: a number followed by `s`, `m`, `h`, `d` or `w`. `null` for no limit. |
 | `encryption.enabled` | off | Stores payload files encrypted. See [Encryption at rest](#encryption-at-rest). |
 | `encryption.protection` | `dpapi-current-user` | Which protector to use. |
+| `capture.*` | see [docs/capture.md](docs/capture.md#settings) | Image size (default long edge 1568 px), the mouse pointer (off), the explicit copy for text (on) and its timeout (500 ms), extra terminal window classes. |
 
 A field that is switched off is removed before anything else reads the metadata, which the tests check against the manifest, the outbox, the audit log and error messages. The denylist still sees the window title for matching even when titles are not recorded; it never writes it anywhere.
 
@@ -155,6 +160,12 @@ To add patterns, list them in the settings; to replace a built-in one, disable i
 
 A pattern name is a lower-case token (`a–z`, `0–9`, `-`, up to 32 characters); the regular expression must compile and must not match empty text. If a pattern runs past its timeout, the text cannot be shown to be clean, so that text item is **left out** of the packet and the manifest records `{"kind": "withheld", "pattern": "<name>"}`; if nothing else remains, nothing is queued (`CaptureStatus.Withheld`).
 
+## Text and the clipboard
+
+Text comes from the focused element's selection (UI Automation) first. The clipboard's current text is read **only** when you ask for it, and not at all when the application that put it there marked it as sensitive, as password managers do. As a last resort the tool sends Ctrl+C, reads the copy and restores your clipboard; it never does this in consoles and terminals, where Ctrl+C would interrupt the running program. Copied content marked sensitive is discarded.
+
+Whatever the tool writes to the clipboard (today only the restore) is marked `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory` = 0 and `CanUploadToCloudClipboard` = 0, so it stays out of Windows clipboard history, the cloud clipboard and clipboard managers that honour these marks. The restore keeps text, images, files and registered formats; other formats can be lost. Details: [docs/capture.md](docs/capture.md#text).
+
 ## Audit log
 
 The audit log is JSON Lines, appended and flushed per entry, never rewritten. Each entry may hold:
@@ -224,5 +235,7 @@ Removed 01M6HXXNGZJXM5SEVYEM9KBPK5: purge-id, 1457 bytes
 - **Redaction is pattern-based and can miss secrets**: unusual formats, secrets split across lines, passwords in prose, secrets in images. It can also redact harmless text that looks like a secret. Read what you send.
 - **Deletion is not secure erasure** (see above).
 - **Screen sharing is not handled.** context-companion does not detect or change what screen-sharing, recording or meeting software captures, and it never hides its own windows from them.
-- Some applications block capture; the capture step will report this rather than work around it.
+- Some applications block capture, or come out black; the capture step reports a refusal or delivers what Windows gives it, and never works around the protection.
+- **The explicit copy changes the clipboard for a moment** and sends a real Ctrl+C to the focused application. Formats it cannot restore are lost (see [docs/capture.md](docs/capture.md#what-the-explicit-copy-does-to-the-clipboard)), and an application that uses Ctrl+C for something other than copy does that instead. Switch it off with `capture.explicit_copy`.
+- The GDI fallback (used when Windows.Graphics.Capture is unavailable, and for regions across monitors) shows no capture border, because Windows offers none for it.
 - Packets are not signed; anyone who can write to the inbox can write a packet.

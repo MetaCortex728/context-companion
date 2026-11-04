@@ -2,16 +2,16 @@
 
 A lightweight Windows utility for handing your own context to AI tools. When you press a key or make a gesture, it captures exactly what you choose (a window, a screen region, selected text), packages it as a documented packet with hashes and source details, and delivers it to a local inbox folder that coding agents and other tools can read. It records nothing in the background, does no reasoning of its own and favours no AI vendor.
 
-Status: the first half of Stage 1 of the [roadmap](ROADMAP.md) works and is tested on Linux and Windows: the packet format and `ccomp`, the outbox with delivery receipts and the audit log, and the privacy pipeline. Capture itself (window, region and selected text), hotkeys and the tray app's delivery to the inbox are next.
+Status: Stage 1 of the [roadmap](ROADMAP.md) up to item 6. The packet format and `ccomp`, the outbox with delivery receipts and the audit log, and the privacy pipeline are tested on Linux and Windows. Window, region and text capture work on Windows through `ccomp capture` and the privacy pipeline, with Windows tests against real windows (both capture methods, UI Automation, the explicit copy and the clipboard restore). Hotkeys, the tray and the preview window are next.
 
 ## Layout
 
 - `src/ContextCompanion.Core`: platform-neutral library (`net10.0`, no Windows APIs).
-- `src/ContextCompanion.App`: the WPF tray app (`net10.0-windows`). For now a skeleton that shows a tray icon and exits from the tray menu.
-- `src/ContextCompanion.Platform.Windows`: Windows implementations of Core interfaces (`net10.0-windows`); for now DPAPI encryption at rest.
-- `src/ContextCompanion.Tool`: the `ccomp` command-line tool (`net10.0`, plus a `net10.0-windows` build that can decrypt DPAPI-encrypted packets).
+- `src/ContextCompanion.App`: the WPF tray app (`net10.0-windows10.0.19041.0`, Per-Monitor V2 DPI aware). For now a skeleton that shows a tray icon and exits from the tray menu.
+- `src/ContextCompanion.Platform.Windows`: Windows implementations of Core interfaces (`net10.0-windows10.0.19041.0`, Windows 10 version 2004 or later): DPAPI encryption at rest, window and region capture (Windows.Graphics.Capture with a GDI fallback), window enumeration, and text through UI Automation, the clipboard and an explicit copy.
+- `src/ContextCompanion.Tool`: the `ccomp` command-line tool (`net10.0`, plus a `net10.0-windows10.0.19041.0` build that can decrypt DPAPI-encrypted packets and capture).
 - `tests/ContextCompanion.Core.Tests`: xUnit tests for Core and `ccomp`, run on Linux and Windows.
-- `tests/ContextCompanion.Platform.Windows.Tests`: DPAPI tests; they run on Windows and are reported as skipped elsewhere.
+- `tests/ContextCompanion.Platform.Windows.Tests`: DPAPI, capture, window enumeration, UI Automation and clipboard tests; they run on Windows with an interactive desktop and are reported as skipped, with the reason, elsewhere. The text tests take the foreground and use the clipboard, so leave the desktop alone while they run.
 
 ## Build and test
 
@@ -32,7 +32,7 @@ dotnet build ContextCompanion.sln -p:EnableWindowsTargeting=true
 dotnet test tests/ContextCompanion.Core.Tests
 ```
 
-Continuous integration (`.github/workflows/ci.yml`) does both: `ubuntu-latest` builds everything with Windows targeting enabled and runs the Core tests, and `windows-latest` does the same natively and also runs the DPAPI tests. .NET CLI telemetry is switched off in CI.
+Continuous integration (`.github/workflows/ci.yml`) does both: `ubuntu-latest` builds everything with Windows targeting enabled and runs the Core tests, and `windows-latest` does the same natively and also runs the Windows tests. .NET CLI telemetry is switched off in CI.
 
 ## Packets and `ccomp`
 
@@ -103,6 +103,28 @@ Would remove 01M6HXXNK7PAJ68K5J0V7TDA3J: purge-older-than, 584 bytes
 $ ccomp purge inbox --id 01M6HXXNGZJXM5SEVYEM9KBPK5 --yes
 Removed 01M6HXXNGZJXM5SEVYEM9KBPK5: purge-id, 1457 bytes
 1 packet removed, 1457 bytes. Deleted files may still be recoverable from the disk or from backups; see PRIVACY.md.
+```
+
+## Capture from the command line
+
+Until the tray app gets hotkeys, the Windows build of `ccomp` runs a capture from the command line, through the same privacy pipeline, outbox and inbox destination the app will use:
+
+```
+ccomp capture window --foreground --inbox <dir> [--delay <seconds>]
+ccomp capture window --hwnd 0x1A2B3C --inbox <dir>
+ccomp capture region --rect <x,y,width,height> --inbox <dir>
+ccomp capture text [--clipboard] --inbox <dir> --delay 3
+```
+
+Each command also takes `--settings <file>` (privacy and capture settings) and `--outbox <dir>` (default `%LOCALAPPDATA%\context-companion\outbox`). `--delay` waits up to 60 seconds first, so you can focus another window. Rectangles are physical screen pixels. The command prints the packet id, the capture mode (for example `window-wgc` or `region-gdi`, the method that produced the pixels, or `text-selection`, `text-clipboard` or `text-copy`, the source the text came from), whether it was delivered, and the redaction counts, never content or titles. A refused capture (denylisted, minimised or protected window, no text) exits with 1 and says why; the audit log in the inbox records refusals by the denylist.
+
+Text comes from the UI Automation selection, then the clipboard (only with `--clipboard`), then a Ctrl+C that restores your clipboard afterwards. Ctrl+C is never sent to consoles and terminals. Methods, fallbacks, DPI, the visible capture border, minimised windows, multi-monitor regions, resizing and the clipboard rules are described in [docs/capture.md](docs/capture.md).
+
+`CaptureCliTests` runs these commands with stand-ins for the Windows parts, and a Windows test runs `ccomp capture window` against a real window on `windows-latest`. The `net10.0` build refuses; this is from Linux:
+
+```
+$ ccomp capture region --rect 0,0,10,10 --inbox /tmp/ccomp-x
+ccomp: capture works only on Windows, with the Windows build of ccomp. Nothing was captured.
 ```
 
 ## Origin
